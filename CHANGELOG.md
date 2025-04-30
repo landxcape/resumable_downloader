@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.4] - 2025-04-30
+
+- Update homepage
+
 ## [0.0.3] - 2025-04-30
 
 - New feature: added support for delay before attempting retry
