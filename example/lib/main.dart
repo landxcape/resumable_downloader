@@ -1,0 +1,124 @@
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:resumable_downloader/resumable_downloader.dart';
+
+void main() {
+  runApp(const MainApp());
+}
+
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(home: DownloadHomePage());
+  }
+}
+
+class DownloadHomePage extends StatefulWidget {
+  const DownloadHomePage({super.key});
+
+  @override
+  State<DownloadHomePage> createState() => _DownloadHomePageState();
+}
+
+class _DownloadHomePageState extends State<DownloadHomePage> {
+  late final DownloadManager _manager;
+
+  final String downloadUrl = '{downloadUrl}';
+  double _progress = 0.0;
+  bool _isDownloading = false;
+  String _status = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeDownloader();
+  }
+
+  Future<void> _initializeDownloader() async {
+    final baseDir = await getApplicationDocumentsDirectory();
+
+    _manager = DownloadManager(
+      subDir: 'downloads',
+      baseDirectory: baseDir,
+      fileExistsStrategy: FileExistsStrategy.resume,
+      maxConcurrentDownloads: 2,
+      maxRetries: 2,
+      delayBetweenRetries: Duration.zero,
+      logger: (log) => debugPrint('[${log.level.name}] ${log.message}'),
+    );
+  }
+
+  Future<void> _startDownload() async {
+    setState(() {
+      _isDownloading = true;
+      _status = 'Starting download...';
+    });
+
+    try {
+      final file = await _manager.getFile((
+        url: downloadUrl,
+        progress: (record) {
+          record.progressStream.listen((progress) {
+            setState(() {
+              _progress = progress;
+              _status =
+                  'Downloading... ${(_progress * 100).toStringAsFixed(0)}%';
+            });
+          });
+        },
+      ),);
+
+      setState(() {
+        _status = 'Download complete: ${file?.path}';
+      });
+    } catch (e) {
+      setState(() {
+        _status = 'Download failed: $e';
+      });
+    } finally {
+      setState(() {
+        _isDownloading = false;
+      });
+    }
+  }
+
+  void _cancelAll() {
+    _manager.cancelAll();
+    setState(() {
+      _status = 'All downloads canceled';
+      _progress = 0.0;
+      _isDownloading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Resumable Downloader Example')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            LinearProgressIndicator(value: _progress),
+            const SizedBox(height: 16),
+            Text(_status, textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _isDownloading ? null : _startDownload,
+              child: const Text('Start Download'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _isDownloading ? _cancelAll : null,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Cancel Download'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

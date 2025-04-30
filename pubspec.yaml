@@ -1,0 +1,36 @@
+name: resumable_downloader
+description: 'A robust download manager with resumable support, queuing,
+  concurrency, and error handling — built on Dio.'
+version: 0.0.3
+homepage: https://shakyapurna.com.np
+keywords:
+  - downloader
+  - resumable
+  - dio
+  - concurrent
+  - queue
+  - flutter
+  - download-manager
+  - file-download
+  - progress
+  - retry
+
+environment:
+  sdk: ^3.7.2
+  flutter: '>=1.17.0'
+
+dependencies:
+  collection: ^1.19.1
+  dio: ^5.8.0+1
+  flutter:
+    sdk: flutter
+  path_provider: ^2.1.5
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  assets:
+    - assets/
