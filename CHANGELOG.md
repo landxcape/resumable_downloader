@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.6] - 2025-04-30
+
+- Update README and example: add dispose()
+
 ## [0.0.5] - 2025-04-30
 
 - Refactor formating

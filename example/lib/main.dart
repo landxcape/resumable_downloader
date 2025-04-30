@@ -68,7 +68,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             });
           });
         },
-      ));
+      ),);
 
       setState(() {
         _status = 'Download complete: ${file?.path}';
@@ -91,6 +91,12 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       _progress = 0.0;
       _isDownloading = false;
     });
+  }
+
+  @override
+  void dispose() {
+    _manager.dispose();
+    super.dispose();
   }
 
   @override

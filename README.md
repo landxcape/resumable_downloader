@@ -133,6 +133,12 @@ _downloadManager.addAllToQueue([
 ]);
 ```
 
+- Make sure to dispose it
+
+```dart
+_downloadManager.dispose();
+```
+
 ## Additional information
 
 This is a straightforward, practical guide for users to get started with the package.
