@@ -68,7 +68,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             });
           });
         },
-      ),);
+      ));
 
       setState(() {
         _status = 'Download complete: ${file?.path}';

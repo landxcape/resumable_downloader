@@ -246,7 +246,7 @@ class DownloadManager {
         progress((
           url: existingTask.url,
           progressStream: existingTask.progressController.stream,
-        ),);
+        ));
       }
       return existingTask.completer.future;
     }
@@ -257,7 +257,7 @@ class DownloadManager {
     progress?.call((
       url: task.url,
       progressStream: task.progressController.stream,
-    ),);
+    ));
     _enqueue(task);
     _processQueue(); // Don't await
 
