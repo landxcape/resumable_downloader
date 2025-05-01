@@ -23,7 +23,7 @@ class DownloadHomePage extends StatefulWidget {
 }
 
 class _DownloadHomePageState extends State<DownloadHomePage> {
-  late final DownloadManager _manager;
+  late final DownloadManager _downloadManager;
 
   final String downloadUrl = '{downloadUrl}';
   double _progress = 0.0;
@@ -39,7 +39,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   Future<void> _initializeDownloader() async {
     final baseDir = await getApplicationDocumentsDirectory();
 
-    _manager = DownloadManager(
+    _downloadManager = DownloadManager(
       subDir: 'downloads',
       baseDirectory: baseDir,
       fileExistsStrategy: FileExistsStrategy.resume,
@@ -57,7 +57,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     });
 
     try {
-      final file = await _manager.getFile((
+      final file = await _downloadManager.getFile((
         url: downloadUrl,
         progress: (record) {
           record.progressStream.listen((progress) {
@@ -85,7 +85,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   }
 
   void _cancelAll() {
-    _manager.cancelAll();
+    _downloadManager.cancelAll();
     setState(() {
       _status = 'All downloads canceled';
       _progress = 0.0;
@@ -95,7 +95,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
 
   @override
   void dispose() {
-    _manager.dispose();
+    _downloadManager.dispose();
     super.dispose();
   }
 
