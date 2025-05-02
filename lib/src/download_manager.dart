@@ -141,9 +141,35 @@ class DownloadManager {
       /// Re-throw or handle as critical failure? For now, log and continue.
     }
   }
-
-  /// Checks if a fully downloaded file is valid based on expected content length.
-  /// Returns `true` if valid, `false` otherwise.
+/// Verifies whether a fully downloaded file is valid by comparing its size
+  /// to the expected `Content-Length` from a HEAD request.
+  ///
+  /// This method performs a HEAD request to the given [url] and retrieves the
+  /// expected content length from the server. It then compares it to the actual
+  /// size of the provided [file]. If they match, the file is considered valid.
+  ///
+  /// - Returns `true` if the file size matches the expected content length.
+  /// - Returns `false` if the sizes mismatch or if the HEAD request fails.
+  ///
+  /// A warning log is emitted if:
+  /// - The file size does not match the expected content length.
+  /// - The HEAD request fails (e.g., due to network issues or server errors).
+  ///
+  /// If the HEAD request fails for any reason, the file is considered invalid
+  /// by default as a safety measure.
+  ///
+  /// Example:
+  /// ```dart
+  /// final isValid = await _isDownloadedFileValid(url, File('/path/to/file'));
+  /// if (!isValid) {
+  ///   await file.delete(); // Optionally handle corruption
+  /// }
+  /// ```
+  ///
+  /// [url] - The original URL from which the file was downloaded.
+  /// [file] - The downloaded file to validate.
+  ///
+  /// Throws no exceptions.
   Future<bool> _isDownloadedFileValid(String url, File file) async {
     try {
       final response = await _dio.head<dynamic>(
