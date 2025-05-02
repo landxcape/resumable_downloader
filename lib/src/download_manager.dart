@@ -820,11 +820,31 @@ class DownloadManager {
   ///
   /// Returns the extracted filename or a default placeholder.
   String _getFilenameFromUrl(String url) {
-    /// Basic implementation, might need refinement for complex URLs
-    // Extracts the last part of the path after the last '/'
-    return url
-        .split('/')
-        .lastWhere((part) => part.isNotEmpty, orElse: () => 'downloaded_file');
+    try {
+      final uri = Uri.parse(url);
+
+      // Check query parameters for filename-ish values
+      for (final entry in uri.queryParameters.entries) {
+        final value = entry.value;
+        if (value.contains('.') && !value.endsWith('.')) {
+          return value;
+        }
+      }
+
+      // Check if last path segment looks like a file
+      final segments = uri.pathSegments;
+      if (segments.isNotEmpty) {
+        final last = segments.last;
+        if (last.contains('.') && !last.endsWith('/')) {
+          return last;
+        }
+      }
+
+      // Default fallback
+      return 'downloaded_file';
+    } catch (_) {
+      return 'downloaded_file';
+    }
   }
 
   /// Internal helper. Gets the full *potential* local path for a download URL.
