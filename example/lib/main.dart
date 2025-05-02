@@ -95,6 +95,15 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     });
   }
 
+  void _deleteFile() {
+    _downloadManager.deleteContentFile(downloadUrl);
+    setState(() {
+      _status = 'File deleted.';
+      _progress = 0.0;
+      _isDownloading = false;
+    });
+  }
+
   @override
   void dispose() {
     _downloadManager.dispose();
@@ -123,6 +132,12 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
               onPressed: _isDownloading ? _cancelAll : null,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('Cancel Download'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _isDownloading ? null : _deleteFile,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Delete File'),
             ),
           ],
         ),
