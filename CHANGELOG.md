@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.7] - 2025-05-02
+
+- Replaced dart ***records*** with ***class*** implementation
+- Added proper file bytes validation if the file already exists.
+
 ## [0.0.6] - 2025-04-30
 
 - Update README and example: add dispose()

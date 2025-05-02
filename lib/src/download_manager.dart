@@ -141,7 +141,8 @@ class DownloadManager {
       /// Re-throw or handle as critical failure? For now, log and continue.
     }
   }
-/// Verifies whether a fully downloaded file is valid by comparing its size
+
+  /// Verifies whether a fully downloaded file is valid by comparing its size
   /// to the expected `Content-Length` from a HEAD request.
   ///
   /// This method performs a HEAD request to the given [url] and retrieves the
