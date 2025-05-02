@@ -10,6 +10,8 @@ import 'package:path_provider/path_provider.dart'
 import 'constants/enums.dart';
 import 'constants/typedefs.dart';
 import 'models/download_task.dart';
+import 'models/log_record.dart';
+import 'models/queue_item.dart';
 
 // --- Download Manager ---
 
@@ -140,6 +142,35 @@ class DownloadManager {
     }
   }
 
+  /// Checks if a fully downloaded file is valid based on expected content length.
+  /// Returns `true` if valid, `false` otherwise.
+  Future<bool> _isDownloadedFileValid(String url, File file) async {
+    try {
+      final response = await _dio.head<dynamic>(
+        url,
+        options: Options(followRedirects: true),
+      );
+      final expectedLength = int.tryParse(
+        response.headers.value(HttpHeaders.contentLengthHeader) ?? '',
+      );
+      final actualLength = await file.length();
+
+      if (expectedLength != null && actualLength != expectedLength) {
+        _log(
+          'File size mismatch: expected $expectedLength, got $actualLength',
+          level: LogLevel.warning,
+        );
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      _log('Failed to verify downloaded file: $e', level: LogLevel.warning);
+      // If we can't verify, we assume the worst.
+      return false;
+    }
+  }
+
   /// Internal helper. Checks file existence, applies strategy, and creates/enqueues a task if needed.
   ///
   /// This function encapsulates the logic defined by [FileExistsStrategy] before
@@ -155,7 +186,7 @@ class DownloadManager {
   /// Returns `null` specifically if cancelled very early or in edge cases handled internally.
   Future<File?> _checkFileAndCreateTask(QueueItem item) async {
     final downloadUrl = item.url;
-    final progress = item.progress;
+    final progress = item.progressCallback;
 
     final localPath = await _getDownloadPath(downloadUrl);
     final existingFile = File(localPath);
@@ -163,9 +194,21 @@ class DownloadManager {
     final fileExists = await existingFile.exists(); // Check existence async
     final tempFileExists = await tempFile.exists(); // Check existence async
 
+    if (fileExists) {
+      final isValid = await _isDownloadedFileValid(downloadUrl, existingFile);
+      if (isValid) {
+        _log(
+          'File already exists and is valid. Skipping download.',
+          level: LogLevel.debug,
+        );
+      } else {
+        _log('Corrupted file detected. Deleting.', level: LogLevel.warning);
+        await existingFile.delete();
+      }
+    }
+
     if (fileExists || tempFileExists) {
       // NOTE: This logic applies the *manager's* default `fileExistsStrategy`.
-      // It does not currently support overriding strategy per-call here.
       switch (fileExistsStrategy) {
         case FileExistsStrategy.keepExisting:
           if (fileExists) {
@@ -243,10 +286,7 @@ class DownloadManager {
 
       /// Call progress callback if provided and task hasn't completed yet
       if (progress != null && !existingTask.progressController.isClosed) {
-        progress((
-          url: existingTask.url,
-          progressStream: existingTask.progressController.stream,
-        ));
+        progress.call(existingTask.progressController.stream);
       }
       return existingTask.completer.future;
     }
@@ -254,10 +294,7 @@ class DownloadManager {
     /// Create and enqueue new task
     // Note: Task created with the *manager's* default strategy.
     final task = DownloadTask(downloadUrl, fileExistsStrategy);
-    progress?.call((
-      url: task.url,
-      progressStream: task.progressController.stream,
-    ));
+    progress?.call(task.progressController.stream);
     _enqueue(task);
     _processQueue(); // Don't await
 
@@ -1031,6 +1068,8 @@ class DownloadManager {
   /// - [level]: The severity level ([LogLevel]) of the message. Defaults to [LogLevel.debug].
   void _log(String message, {LogLevel level = LogLevel.debug}) {
     /// Avoid logging if logger is null
-    logger?.call((message: '[DownloadManager] $message', level: level));
+    logger?.call(
+      LogRecord(message: '[DownloadManager] $message', level: level),
+    );
   }
 }
