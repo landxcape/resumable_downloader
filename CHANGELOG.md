@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.8] - 2025-05-02
+
+- updated readme to reflect latest changes
+
 ## [0.0.7] - 2025-05-02
 
 - Replaced dart ***records*** with ***class*** implementation

@@ -101,33 +101,45 @@ final DownloadManager _downloadManager = DownloadManager(
 
 ```dart
 // Download immediately or enqueue with callback
-_downloadManager.getFile((
-  url: downloadUrl,
-  progress: (record) {
-    print('Progress for ${record.url}: ${record.progressStream}');
-  },
-));
+_downloadManager.getFile(
+  QueueItem(
+    url: 'https://example.com/file.zip',
+    progressCallback: (progressStream) {
+      progressStream.listen((progress) {
+        print('Download progress: ${(progress * 100).toStringAsFixed(1)}%');
+      });
+    },
+  ),
+);
 
-// Add one item to queue
-_downloadManager.addToQueue((
-  url: downloadUrl,
-  progress: (record) {
-    print('Progress for ${record.url}');
-  },
-));
+// Add one item to the queue
+_downloadManager.addToQueue(
+  QueueItem(
+    url: 'https://example.com/another_file.zip',
+    progressCallback: (progressStream) {
+      progressStream.listen((progress) {
+        print('Queued file progress: ${(progress * 100).toStringAsFixed(1)}%');
+      });
+    },
+  ),
+);
 
 // Add multiple items to the queue
 _downloadManager.addAllToQueue([
-  (
+  QueueItem(
     url: 'https://example.com/file1.zip',
-    progress: (record) {
-      print('File 1 progress...');
+    progressCallback: (stream) {
+      stream.listen((progress) {
+        print('File 1 progress: ${(progress * 100).toStringAsFixed(1)}%');
+      });
     },
   ),
-  (
+  QueueItem(
     url: 'https://example.com/file2.zip',
-    progress: (record) {
-      print('File 2 progress...');
+    progressCallback: (stream) {
+      stream.listen((progress) {
+        print('File 2 progress: ${(progress * 100).toStringAsFixed(1)}%');
+      });
     },
   ),
 ]);
