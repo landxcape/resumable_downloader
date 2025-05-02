@@ -57,18 +57,20 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     });
 
     try {
-      final file = await _downloadManager.getFile((
-        url: downloadUrl,
-        progress: (record) {
-          record.progressStream.listen((progress) {
-            setState(() {
-              _progress = progress;
-              _status =
-                  'Downloading... ${(_progress * 100).toStringAsFixed(0)}%';
+      final file = await _downloadManager.getFile(
+        QueueItem(
+          url: downloadUrl,
+          progressCallback: (progress) {
+            progress.listen((progress) {
+              setState(() {
+                _progress = progress;
+                _status =
+                    'Downloading... ${(_progress * 100).toStringAsFixed(0)}%';
+              });
             });
-          });
-        },
-      ),);
+          },
+        ),
+      );
 
       setState(() {
         _status = 'Download complete: ${file?.path}';
