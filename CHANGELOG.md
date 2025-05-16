@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.9] - 2025-05-16
+
+- add optional [fileName] added to [QueueItem]
+
 ## [0.0.8] - 2025-05-02
 
 - updated readme to reflect latest changes

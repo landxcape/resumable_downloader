@@ -25,7 +25,8 @@ class DownloadHomePage extends StatefulWidget {
 class _DownloadHomePageState extends State<DownloadHomePage> {
   late final DownloadManager _downloadManager;
 
-  final String downloadUrl = '{downloadUrl}';
+  final String downloadUrl =
+      'https://archive.org/download/tomandjerry_1080p/S1940E01%20-%20Puss%20Gets%20The%20Boot%20%281080p%20BluRay%20x265%20Ghost%29.mp4';
   double _progress = 0.0;
   bool _isDownloading = false;
   String _status = '';
@@ -60,6 +61,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       final file = await _downloadManager.getFile(
         QueueItem(
           url: downloadUrl,
+          fileName: 'download_file', // optional
           progressCallback: (progressStream) {
             progressStream.listen((progress) {
               setState(() {
@@ -96,7 +98,12 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   }
 
   void _deleteFile() {
-    _downloadManager.deleteContentFile(downloadUrl);
+    _downloadManager.deleteContentFile(
+      QueueItem(
+        url: downloadUrl,
+        fileName: 'download_file', // optional
+      ),
+    );
     setState(() {
       _status = 'File deleted.';
       _progress = 0.0;

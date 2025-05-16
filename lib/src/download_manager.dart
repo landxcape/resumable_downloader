@@ -205,7 +205,7 @@ class DownloadManager {
   /// if the download is already active or queued.
   /// Assumes the manager's `fileExistsStrategy` should be used.
   ///
-  /// - [downloadUrl]: The URL to check and potentially download.
+  /// - [item]: The queue item to check and potentially download.
   /// - [progress]: Optional callback to receive the progress stream for this download.
   ///
   /// Returns a Future that completes with the [File] object (either existing or downloaded),
@@ -215,7 +215,7 @@ class DownloadManager {
     final downloadUrl = item.url;
     final progress = item.progressCallback;
 
-    final localPath = await _getDownloadPath(downloadUrl);
+    final localPath = await _getDownloadPath(item, fileName: item.fileName);
     final existingFile = File(localPath);
     final tempFile = File('$localPath.tmp');
     final fileExists = await existingFile.exists(); // Check existence async
@@ -300,7 +300,7 @@ class DownloadManager {
     /// If file doesn't exist OR strategy allows proceeding (replace/resume with temp/fail with temp/keepExisting with temp)
     /// Check if already active or queued
     if (_activeDownloads.containsKey(downloadUrl) ||
-        _downloadQueue.any((t) => t.url == downloadUrl)) {
+        _downloadQueue.any((t) => t.item.url == downloadUrl)) {
       _log(
         'Download already active or queued: $downloadUrl',
         level: LogLevel.info,
@@ -309,7 +309,7 @@ class DownloadManager {
       /// Find the existing task and return its future
       final existingTask =
           _activeDownloads[downloadUrl] ??
-          _downloadQueue.firstWhere((t) => t.url == downloadUrl);
+          _downloadQueue.firstWhere((t) => t.item.url == downloadUrl);
 
       /// Call progress callback if provided and task hasn't completed yet
       if (progress != null && !existingTask.progressController.isClosed) {
@@ -320,7 +320,7 @@ class DownloadManager {
 
     /// Create and enqueue new task
     // Note: Task created with the *manager's* default strategy.
-    final task = DownloadTask(downloadUrl, fileExistsStrategy);
+    final task = DownloadTask(item, fileExistsStrategy);
     progress?.call(task.progressController.stream);
     _enqueue(task);
     _processQueue(); // Don't await
@@ -336,7 +336,7 @@ class DownloadManager {
   ///
   /// Provides a [progress] callback that delivers a stream for monitoring the download.
   ///
-  /// - [downloadUrl]: The URL of the file to get. Must be a valid, absolute URL.
+  /// - [QueuItem]: The queue item of the file to get. Must be a valid, absolute URL.
   /// - [progress]: Optional callback ([DownloadProgressRecord]) to receive the download
   ///   progress stream.
   ///
@@ -371,7 +371,7 @@ class DownloadManager {
   /// This method checks the manager's [fileExistsStrategy] and queues the download if necessary.
   /// It does not return the downloaded file directly. Use [getFile] if you need the resulting [File] object.
   ///
-  /// - [downloadUrl]: The URL of the file to queue. Must be a valid, absolute URL.
+  /// - [downloadItem]: The queue item of the file to queue. Must be a valid, absolute URL.
   /// - [progress]: Optional callback ([DownloadProgressRecord]) to receive the download
   ///   progress stream if the download is started.
   ///
@@ -405,7 +405,7 @@ class DownloadManager {
   /// Iterates through the list of download configurations and calls [addToQueue] for each.
   /// Allows specifying individual progress callbacks per download. The `strategy` field in the input records is ignored.
   ///
-  /// - [downloadItems]: A list of records, where each record contains the 'url' (String),
+  /// - [downloadItems]: A list of records, where each record contains the [QueueItem],
   ///   an optional 'progress' callback ([DownloadProgressRecord]), and an optional 'strategy' ([FileExistsStrategy]) field **(which is currently ignored)**.
   ///
   /// Returns a [Future] that completes when all downloads in the list have been
@@ -431,7 +431,7 @@ class DownloadManager {
   /// Assumes duplicate checks and strategy handling have already occurred.
   Future<void> _enqueue(DownloadTask task) async {
     _downloadQueue.add(task);
-    _log('Enqueued download: ${task.url}');
+    _log('Enqueued download: ${task.item.fileNameUrl}');
   }
 
   /// Internal helper. Processes the download queue, starting new downloads if slots are available.
@@ -466,35 +466,35 @@ class DownloadManager {
         /// Check if cancelled before starting
         if (task.cancelToken.isCancelled) {
           _log(
-            'Task was cancelled before starting: ${task.url}',
+            'Task was cancelled before starting: ${task.item.fileNameUrl}',
             level: LogLevel.warning,
           );
           _cleanupTask(
             task,
             DioException.requestCancelled(
-              requestOptions: RequestOptions(path: task.url),
+              requestOptions: RequestOptions(path: task.item.url),
               reason: 'Cancelled before start',
             ),
           );
           continue;
         }
 
-        _activeDownloads[task.url] = task;
+        _activeDownloads[task.item.url] = task;
 
         /// Add to active map
-        _log('Starting download: ${task.url}');
+        _log('Starting download: ${task.item.fileNameUrl}');
 
         /// Don't await _download, let it run concurrently
         _download(task).catchError((Object e) {
           /// Catch potential synchronous errors in _download setup (unlikely but possible)
           _log(
-            'Error initiating download for ${task.url}: $e',
+            'Error initiating download for ${task.item.fileNameUrl}: $e',
             level: LogLevel.error,
           );
-          if (!_activeDownloads.containsKey(task.url)) return;
+          if (!_activeDownloads.containsKey(task.item.url)) return;
 
           /// Already handled in finally?
-          _activeDownloads.remove(task.url);
+          _activeDownloads.remove(task.item.url);
           _cleanupTask(task, e);
           _processQueue();
 
@@ -518,17 +518,17 @@ class DownloadManager {
     if (task.cancelToken.isCancelled || _isDisposed) {
       /// Handle cases where cancellation happened just before download call
       _log(
-        'Download cancelled or manager disposed just before Dio call: ${task.url}',
+        'Download cancelled or manager disposed just before Dio call: ${task.item.fileNameUrl}',
         level: LogLevel.warning,
       );
-      _activeDownloads.remove(task.url);
+      _activeDownloads.remove(task.item.url);
 
       /// Ensure removed from active
       _cleanupTask(
         task,
         task.cancelToken.isCancelled
             ? DioException.requestCancelled(
-              requestOptions: RequestOptions(path: task.url),
+              requestOptions: RequestOptions(path: task.item.url),
               reason: 'Cancelled before network request',
             )
             : StateError('DownloadManager disposed'),
@@ -539,7 +539,6 @@ class DownloadManager {
       return;
     }
 
-    final url = task.url;
     String? localPath;
 
     /// Make nullable
@@ -549,7 +548,8 @@ class DownloadManager {
       final targetDirectory = await _getLocalDirectory();
 
       /// Get Directory object
-      localPath = '${targetDirectory.path}/${_getFilenameFromUrl(url)}';
+      localPath =
+          '${targetDirectory.path}/${_getFilenameFromQueueItem(task.item)}';
       final tempPath = '$localPath.tmp';
       final file = File(tempPath);
       // Check existence of TEMP file for resume/replace logic within download phase
@@ -590,7 +590,7 @@ class DownloadManager {
 
       // Perform Dio download request
       await _dio.download(
-        url,
+        task.item.url,
 
         /// Save path (always temp first)
         tempPath,
@@ -629,7 +629,7 @@ class DownloadManager {
             /// Handle unknown total size - maybe emit bytes? Or a specific state?
             /// For now, let's not emit progress if total is unknown.
             _log(
-              'Progress reporting skipped for $url: Total size unknown.',
+              'Progress reporting skipped for ${task.item.fileNameUrl}: Total size unknown.',
               level: LogLevel.debug,
             );
 
@@ -642,7 +642,7 @@ class DownloadManager {
       /// Check for cancellation *after* download completes (less likely but possible)
       if (task.cancelToken.isCancelled || _isDisposed) {
         _log(
-          'Download cancelled or manager disposed during/after network request: ${task.url}',
+          'Download cancelled or manager disposed during/after network request: ${task.item.fileNameUrl}',
           level: LogLevel.warning,
         );
 
@@ -651,12 +651,12 @@ class DownloadManager {
           await File(tempPath).delete(); // Use tempPath here
         } catch (_) {}
         throw DioException.requestCancelled(
-          requestOptions: RequestOptions(path: url),
+          requestOptions: RequestOptions(path: task.item.url),
           reason: 'Cancelled during/after network request',
         );
       }
 
-      _log('Download complete: $url -> $localPath');
+      _log('Download complete: ${task.item.fileNameUrl} -> $localPath');
       // Rename the successfully downloaded temp file to the final path
       if (!task.completer.isCompleted) {
         // Ensure final directory exists before renaming
@@ -673,7 +673,10 @@ class DownloadManager {
       }
     } on DioException catch (e, s) {
       if (CancelToken.isCancel(e)) {
-        _log('Download cancelled: $url', level: LogLevel.info);
+        _log(
+          'Download cancelled: ${task.item.fileNameUrl}',
+          level: LogLevel.info,
+        );
 
         /// Don't retry on explicit cancellation
         if (!task.completer.isCompleted) {
@@ -685,25 +688,28 @@ class DownloadManager {
           if (localPath != null) await File('$localPath.tmp').delete();
         } catch (_) {}
       } else {
-        _log('Download failed for $url: $e', level: LogLevel.error);
+        _log(
+          'Download failed for ${task.item.fileNameUrl}: $e',
+          level: LogLevel.error,
+        );
         // Basic retry logic based on maxRetries count, regardless of error type
         if (task.retries < maxRetries && !_isDisposed) {
           await Future<void>.delayed(delayBetweenRetries);
           task.retries++;
           _log(
-            'Retrying [${task.retries}/$maxRetries]: $url',
+            'Retrying [${task.retries}/$maxRetries]: ${task.item.fileNameUrl}',
             level: LogLevel.warning,
           );
 
           /// Optional: Add delay before retry
           /// await Future.delayed(Duration(seconds: pow(2, task.retries).toInt()));
-          _activeDownloads.remove(task.url); // Remove before re-queueing
+          _activeDownloads.remove(task.item.url); // Remove before re-queueing
           _downloadQueue.addFirst(task);
 
           /// Retry sooner: add to front
         } else {
           _log(
-            'Exceeded retry limit or disposed for $url',
+            'Exceeded retry limit or disposed for ${task.item.fileNameUrl}',
             level: LogLevel.error,
           );
           if (!task.completer.isCompleted) {
@@ -716,7 +722,7 @@ class DownloadManager {
     } catch (e, s) {
       /// Catch other potential errors (filesystem etc.)
       _log(
-        'An unexpected error occurred during download or processing for $url: $e',
+        'An unexpected error occurred during download or processing for ${task.item.fileNameUrl}: $e',
         level: LogLevel.error,
       );
       if (!task.completer.isCompleted) {
@@ -727,8 +733,8 @@ class DownloadManager {
     } finally {
       /// This block executes even if errors are thrown/caught above
       // Ensure task is removed from active list *unless* it was re-queued for retry
-      if (_activeDownloads.containsKey(task.url)) {
-        _activeDownloads.remove(task.url);
+      if (_activeDownloads.containsKey(task.item.url)) {
+        _activeDownloads.remove(task.item.url);
       }
       if (!task.progressController.isClosed) {
         task.progressController.close();
@@ -769,7 +775,9 @@ class DownloadManager {
       _activeDownloads.remove(url);
     } else {
       /// Check queued downloads
-      taskToCancel = _downloadQueue.firstWhereOrNull((task) => task.url == url);
+      taskToCancel = _downloadQueue.firstWhereOrNull(
+        (task) => task.item.url == url,
+      );
       if (taskToCancel != null) {
         _log('Removing and cancelling queued download: $url');
         _downloadQueue.remove(taskToCancel); // Remove from queue
@@ -847,7 +855,7 @@ class DownloadManager {
         /// Pass error info to cancel token if possible
       } catch (e) {
         _log(
-          "Error cancelling task's token: ${task.url}, $e",
+          "Error cancelling task's token: ${task.item.fileNameUrl}, $e",
           level: LogLevel.error,
         );
       }
@@ -868,7 +876,7 @@ class DownloadManager {
       _cleanupTask(
         task,
         DioException.requestCancelled(
-          requestOptions: RequestOptions(path: task.url),
+          requestOptions: RequestOptions(path: task.item.url),
           reason: 'Queue cleared during cancel/dispose',
         ),
       );
@@ -880,12 +888,14 @@ class DownloadManager {
   /// Uses basic string splitting. Might need refinement for complex URLs.
   /// Provides a default name if extraction fails.
   ///
-  /// - [url]: The URL string.
+  /// - [item]: The [QueueItem] to extract the filename from.
   ///
   /// Returns the extracted filename or a default placeholder.
-  String _getFilenameFromUrl(String url) {
+  String _getFilenameFromQueueItem(QueueItem item) {
+    if (item.fileName != null) return item.fileName!;
+
     try {
-      final uri = Uri.parse(url);
+      final uri = Uri.parse(item.url);
 
       // Check query parameters for filename-ish values
       for (final entry in uri.queryParameters.entries) {
@@ -917,14 +927,14 @@ class DownloadManager {
   /// Combines the base directory, subdirectory, and the filename extracted from the URL.
   /// Ensures the target directory exists before returning the path string.
   ///
-  /// - [url]: The download URL.
+  /// - [item]: The [QueueItem] to extract the filename from.
   ///
   /// Returns a [Future] that completes with the absolute local file path string.
   /// Throws if the subdirectory cannot be created/accessed.
-  Future<String> _getDownloadPath(String url) async {
+  Future<String> _getDownloadPath(QueueItem item, {String? fileName}) async {
     /// Ensure target directory exists before returning path
     final directory = await _getLocalDirectory();
-    return '${directory.path}/${_getFilenameFromUrl(url)}';
+    return '${directory.path}/${fileName ?? _getFilenameFromQueueItem(item)}';
   }
 
   /// Internal helper. Gets the [Directory] object for the specific subdirectory where downloads are stored.
@@ -1003,17 +1013,17 @@ class DownloadManager {
   /// Calculates the expected local path for the URL and attempts to delete the file
   /// at that path and its `.tmp` variant. Logs the outcome.
   ///
-  /// - [url]: The URL whose corresponding downloaded file should be deleted.
+  /// - [item]: The [QueueItem] whose corresponding downloaded file should be deleted.
   ///
   /// Returns a [Future] that completes when the deletion attempts are finished.
   /// Does not throw if the file doesn't exist. Catches and logs errors during deletion.
   /// Does nothing if the manager is disposed.
-  Future<void> deleteContentFile(String url) async {
+  Future<void> deleteContentFile(QueueItem item) async {
     if (_isDisposed) return;
     String?
     path; // Make nullable to handle potential errors in _getDownloadPath
     try {
-      path = await _getDownloadPath(url);
+      path = await _getDownloadPath(item);
 
       /// Get path first
       final file = File(path);
@@ -1024,7 +1034,7 @@ class DownloadManager {
         /// Check async
         await file.delete();
         deletedFinal = true;
-        _log('Deleted local file for $url at $path');
+        _log('Deleted local file for ${item.fileNameUrl} at $path');
       }
 
       bool deletedTemp = false;
@@ -1032,18 +1042,20 @@ class DownloadManager {
         // Check async
         await tempFile.delete();
         deletedTemp = true;
-        _log('Deleted local temp file for $url at ${tempFile.path}');
+        _log(
+          'Deleted local temp file for ${item.fileNameUrl} at ${tempFile.path}',
+        );
       }
 
       if (!deletedFinal && !deletedTemp) {
         _log(
-          'Local file or temp file for $url not found for deletion at $path(.tmp)',
+          'Local file or temp file for ${item.fileNameUrl} not found for deletion at $path(.tmp)',
           level: LogLevel.debug,
         );
       }
     } catch (e) {
       _log(
-        'Error deleting file(s) for $url (path: $path): $e',
+        'Error deleting file(s) for ${item.fileNameUrl} (path: $path): $e',
         level: LogLevel.error,
       );
 

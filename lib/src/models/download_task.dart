@@ -4,15 +4,16 @@ import 'dart:async' show Completer, StreamController;
 import 'dart:io' show File;
 
 import 'package:dio/dio.dart' show CancelToken;
-import '../constants/enums.dart';
+
+import '../../resumable_downloader.dart';
 
 /// Represents an individual download operation managed internally by [DownloadManager].
 ///
 /// This class holds the state for a single download, including its URL,
 /// completion status, progress reporting, cancellation token, and retry count.
 class DownloadTask {
-  /// The URL of the file to be downloaded.
-  final String url;
+  /// The [QueueItem] of the file to be downloaded.
+  final QueueItem item;
 
   /// A [Completer] that resolves with the downloaded [File] on success,
   /// or completes with an error if the download fails or is cancelled.
@@ -37,6 +38,6 @@ class DownloadTask {
 
   /// Creates a new download task instance.
   ///
-  /// Requires the [url] to download from and the [fileExistsStrategy] to apply for this specific task.
-  DownloadTask(this.url, this.fileExistsStrategy); // Pass strategy
+  /// Requires the [item] [QueueItem] to download from and the [fileExistsStrategy] to apply for this specific task.
+  DownloadTask(this.item, this.fileExistsStrategy); // Pass strategy
 }

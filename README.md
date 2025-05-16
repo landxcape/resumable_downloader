@@ -104,6 +104,7 @@ final DownloadManager _downloadManager = DownloadManager(
 _downloadManager.getFile(
   QueueItem(
     url: 'https://example.com/file.zip',
+    fileName: 'download_file.zip', // optional
     progressCallback: (progressStream) {
       progressStream.listen((progress) {
         print('Download progress: ${(progress * 100).toStringAsFixed(1)}%');
@@ -116,6 +117,7 @@ _downloadManager.getFile(
 _downloadManager.addToQueue(
   QueueItem(
     url: 'https://example.com/another_file.zip',
+    fileName: 'download_another_file.zip', // optional
     progressCallback: (progressStream) {
       progressStream.listen((progress) {
         print('Queued file progress: ${(progress * 100).toStringAsFixed(1)}%');
@@ -128,6 +130,7 @@ _downloadManager.addToQueue(
 _downloadManager.addAllToQueue([
   QueueItem(
     url: 'https://example.com/file1.zip',
+    fileName: 'download_file1.zip', // optional
     progressCallback: (stream) {
       stream.listen((progress) {
         print('File 1 progress: ${(progress * 100).toStringAsFixed(1)}%');
@@ -136,6 +139,7 @@ _downloadManager.addAllToQueue([
   ),
   QueueItem(
     url: 'https://example.com/file2.zip',
+    fileName: 'download_file2.zip', // optional
     progressCallback: (stream) {
       stream.listen((progress) {
         print('File 2 progress: ${(progress * 100).toStringAsFixed(1)}%');
