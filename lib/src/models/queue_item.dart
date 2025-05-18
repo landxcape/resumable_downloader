@@ -1,3 +1,5 @@
+import 'download_progress.dart';
+
 /// Represents a single item in the download queue managed by [DownloadManager].
 ///
 /// Each [QueueItem] contains the download [url], an optional [fileName], and an optional [progressCallback]
@@ -27,9 +29,10 @@ class QueueItem {
 
   /// An optional callback to receive a stream of download progress updates.
   ///
-  /// The stream emits values between `0.0` and `1.0`, representing the percentage
+  /// The stream emits [DownloadProgress], representing the percentage
   /// of download completion. The stream closes when the download completes or fails.
-  final void Function(Stream<double> progressStream)? progressCallback;
+  final void Function(Stream<DownloadProgress> progressStream)?
+  progressCallback;
 
   /// Creates a new [QueueItem] with the specified [url], an optional [fileName], and optional [progressCallback].
   /// if [fileName] is not provided, the original URL is used.

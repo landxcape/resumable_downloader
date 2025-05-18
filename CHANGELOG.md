@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.10] - 2025-05-16
+
+- add more info on [DownloadProgress], receivedBytes and totalBytes along with progress
+
 ## [0.0.9] - 2025-05-16
 
 - add optional [fileName] added to [QueueItem]

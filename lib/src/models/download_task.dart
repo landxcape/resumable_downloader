@@ -20,9 +20,9 @@ class DownloadTask {
   /// May complete with `null` in specific handled cases (though current logic aims for File or error).
   final Completer<File?> completer = Completer<File?>();
 
-  /// A [StreamController] to broadcast download progress (0.0 to 1.0).
+  /// A [StreamController] to broadcast download progress [DownloadProgress].
   /// It's a broadcast stream allowing multiple listeners if needed (e.g., via [getFile]).
-  final StreamController<double> progressController =
+  final StreamController<DownloadProgress> progressController =
       StreamController.broadcast();
 
   /// A [CancelToken] from the `dio` package, used to cancel the underlying

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart'
 
 import 'constants/enums.dart';
 import 'constants/typedefs.dart';
+import 'models/download_progress.dart';
 import 'models/download_task.dart';
 import 'models/log_record.dart';
 import 'models/queue_item.dart';
@@ -620,11 +621,11 @@ class DownloadManager {
               !task.progressController.isClosed &&
               !task.cancelToken.isCancelled) {
             // Calculate progress based on total received / effective total size
-            double progress = (currentTotalReceived / effectiveTotal).clamp(
-              0.0,
-              1.0,
+            final downloadProgress = DownloadProgress(
+              receivedByte: currentTotalReceived,
+              totalByte: effectiveTotal,
             );
-            task.progressController.add(progress);
+            task.progressController.add(downloadProgress);
           } else if (total == -1 && !task.progressController.isClosed) {
             /// Handle unknown total size - maybe emit bytes? Or a specific state?
             /// For now, let's not emit progress if total is unknown.
@@ -668,7 +669,9 @@ class DownloadManager {
       }
       // Ensure progress hits 1.0 and stream is closed on success
       if (!task.progressController.isClosed) {
-        task.progressController.add(1.0);
+        task.progressController.add(
+          DownloadProgress(receivedByte: 1, totalByte: 1),
+        );
         task.progressController.close();
       }
     } on DioException catch (e, s) {

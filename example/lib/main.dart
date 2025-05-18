@@ -27,7 +27,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
 
   final String downloadUrl =
       'https://archive.org/download/tomandjerry_1080p/S1940E01%20-%20Puss%20Gets%20The%20Boot%20%281080p%20BluRay%20x265%20Ghost%29.mp4';
-  double _progress = 0.0;
+  DownloadProgress _progress = DownloadProgress(receivedByte: 0, totalByte: 1);
   bool _isDownloading = false;
   String _status = '';
 
@@ -67,7 +67,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
               setState(() {
                 _progress = progress;
                 _status =
-                    'Downloading... ${(_progress * 100).toStringAsFixed(0)}%';
+                    'Downloading... ${(_progress.progress * 100).toStringAsFixed(0)}%';
               });
             });
           },
@@ -92,7 +92,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     _downloadManager.cancelAll();
     setState(() {
       _status = 'All downloads canceled';
-      _progress = 0.0;
+      _progress = DownloadProgress(receivedByte: 0, totalByte: 1);
       _isDownloading = false;
     });
   }
@@ -106,7 +106,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     );
     setState(() {
       _status = 'File deleted.';
-      _progress = 0.0;
+      _progress = DownloadProgress(receivedByte: 0, totalByte: 1);
       _isDownloading = false;
     });
   }
@@ -126,7 +126,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            LinearProgressIndicator(value: _progress),
+            LinearProgressIndicator(value: _progress.progress),
             const SizedBox(height: 16),
             Text(_status, textAlign: TextAlign.center),
             const SizedBox(height: 24),
