@@ -667,14 +667,19 @@ class DownloadManager {
         await file.rename(
           localPath,
         ); // Rename temp file (file variable) to final path (localPath)
-        task.completer.complete(File(localPath));
+        try {
+          task.completer.complete(File(localPath));
+        } catch (e) {
+          _log('Failed to complete download: $e');
+        }
       }
       // Ensure progress hits 1.0 and stream is closed on success
       if (!task.progressController.isClosed) {
+        final lastProgress = await task.progressController.stream.last;
         task.progressController.add(
           DownloadProgress(
-            receivedByte: file.lengthSync(),
-            totalByte: (await task.progressController.stream.last).totalByte,
+            receivedByte: lastProgress.receivedByte,
+            totalByte: lastProgress.totalByte,
           ),
         );
         task.progressController.close();
@@ -730,7 +735,7 @@ class DownloadManager {
     } catch (e, s) {
       /// Catch other potential errors (filesystem etc.)
       _log(
-        'An unexpected error occurred during download or processing for ${task.item.fileNameUrl}: $e',
+        'An unexpected error occurred during download or processing for ${task.item.fileNameUrl}: $e, $s',
         level: LogLevel.error,
       );
       if (!task.completer.isCompleted) {
@@ -900,8 +905,6 @@ class DownloadManager {
   ///
   /// Returns the extracted filename or a default placeholder.
   String _getFilenameFromQueueItem(QueueItem item) {
-    if (item.fileName != null) return item.fileName!;
-
     try {
       final uri = Uri.parse(item.url);
 
@@ -909,7 +912,8 @@ class DownloadManager {
       for (final entry in uri.queryParameters.entries) {
         final value = entry.value;
         if (value.contains('.') && !value.endsWith('.')) {
-          return value;
+          final nameParts = value.split('.');
+          return [item.fileName ?? nameParts.first, nameParts.last].join('.');
         }
       }
 
@@ -918,7 +922,8 @@ class DownloadManager {
       if (segments.isNotEmpty) {
         final last = segments.last;
         if (last.contains('.') && !last.endsWith('/')) {
-          return last;
+          final nameParts = last.split('.');
+          return [item.fileName ?? nameParts.first, nameParts.last].join('.');
         }
       }
 
@@ -1061,6 +1066,8 @@ class DownloadManager {
           level: LogLevel.debug,
         );
       }
+      _activeDownloads.remove(item.url);
+      _downloadQueue.removeWhere((task) => task.item == item);
     } catch (e) {
       _log(
         'Error deleting file(s) for ${item.fileNameUrl} (path: $path): $e',

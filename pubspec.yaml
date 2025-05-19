@@ -1,7 +1,7 @@
 name: resumable_downloader
 description: 'A robust download manager with resumable support, queuing,
   concurrency, and error handling — built on Dio.'
-version: 0.0.11
+version: 0.0.12
 homepage: https://github.com/landxcape/resumable_downloader
 keywords:
   - downloader

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.12] - 2025-05-19
+
+- fix [tempFile] name to match with custom name in [QueueItem]
+
 ## [0.0.11] - 2025-05-19
 
 - fix [DownloadProgress] last receive bytes data
