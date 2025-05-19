@@ -1,6 +1,10 @@
 # Changelog
 
-## [0.0.10] - 2025-05-16
+## [0.0.11] - 2025-05-19
+
+- fix [DownloadProgress] last receive bytes data
+
+## [0.0.10] - 2025-05-18
 
 - add more info on [DownloadProgress], receivedBytes and totalBytes along with progress
 

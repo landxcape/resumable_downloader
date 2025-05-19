@@ -634,7 +634,9 @@ class DownloadManager {
               level: LogLevel.debug,
             );
 
-            /// task.progressController.add(-1.0); // Example: Signal unknown size
+            task.progressController.add(
+              DownloadProgress(receivedByte: -1, totalByte: -1),
+            ); // Example: Signal unknown size
           }
         },
         // deleteOnError: true, // Consider Dio deleting partial file on Dio error
@@ -670,7 +672,10 @@ class DownloadManager {
       // Ensure progress hits 1.0 and stream is closed on success
       if (!task.progressController.isClosed) {
         task.progressController.add(
-          DownloadProgress(receivedByte: 1, totalByte: 1),
+          DownloadProgress(
+            receivedByte: file.lengthSync(),
+            totalByte: (await task.progressController.stream.last).totalByte,
+          ),
         );
         task.progressController.close();
       }
