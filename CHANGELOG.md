@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.13] - 2025-05-21
+
+- fix [FileStorageStetragy.resume] not working as expected
+
 ## [0.0.12] - 2025-05-19
 
 - fix [tempFile] name to match with custom name in [QueueItem]

@@ -216,7 +216,7 @@ class DownloadManager {
     final downloadUrl = item.url;
     final progress = item.progressCallback;
 
-    final localPath = await _getDownloadPath(item, fileName: item.fileName);
+    final localPath = await _getDownloadPath(item);
     final existingFile = File(localPath);
     final tempFile = File('$localPath.tmp');
     final fileExists = await existingFile.exists(); // Check existence async
@@ -944,10 +944,10 @@ class DownloadManager {
   ///
   /// Returns a [Future] that completes with the absolute local file path string.
   /// Throws if the subdirectory cannot be created/accessed.
-  Future<String> _getDownloadPath(QueueItem item, {String? fileName}) async {
+  Future<String> _getDownloadPath(QueueItem item) async {
     /// Ensure target directory exists before returning path
     final directory = await _getLocalDirectory();
-    return '${directory.path}/${fileName ?? _getFilenameFromQueueItem(item)}';
+    return '${directory.path}/${_getFilenameFromQueueItem(item)}';
   }
 
   /// Internal helper. Gets the [Directory] object for the specific subdirectory where downloads are stored.
