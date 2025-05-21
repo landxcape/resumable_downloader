@@ -227,9 +227,7 @@ class DownloadManager {
       if (isValid) {
         final fileLength = await existingFile.length();
         progress?.call(
-          Stream.value(
-            DownloadProgress(receivedByte: fileLength, totalByte: fileLength),
-          ),
+          DownloadProgress(receivedByte: fileLength, totalByte: fileLength),
         );
         _log(
           'File already exists and is valid. Skipping download.',
@@ -318,9 +316,9 @@ class DownloadManager {
           _activeDownloads[downloadUrl] ??
           _downloadQueue.firstWhere((t) => t.item.url == downloadUrl);
 
-      /// Call progress callback if provided and task hasn't completed yet
+      // /// Call progress callback if provided and task hasn't completed yet
       if (progress != null && !existingTask.progressController.isClosed) {
-        progress.call(existingTask.progressController.stream);
+        existingTask.initProgressCallback();
       }
       return existingTask.completer.future;
     }
@@ -328,7 +326,7 @@ class DownloadManager {
     /// Create and enqueue new task
     // Note: Task created with the *manager's* default strategy.
     final task = DownloadTask(item, fileExistsStrategy);
-    progress?.call(task.progressController.stream);
+    task.initProgressCallback();
     _enqueue(task);
     _processQueue(); // Don't await
 

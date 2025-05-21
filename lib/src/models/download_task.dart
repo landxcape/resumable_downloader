@@ -25,6 +25,12 @@ class DownloadTask {
   final StreamController<DownloadProgress> progressController =
       StreamController.broadcast();
 
+  /// A callback function that can be set to handle progress updates for this task
+  /// and sends to the [QueueItem]'s [progressCallback].
+  void initProgressCallback() => progressController.stream.listen(
+    (progress) => item.progressCallback?.call(progress),
+  );
+
   /// A [CancelToken] from the `dio` package, used to cancel the underlying
   /// network request associated with this task.
   final CancelToken cancelToken = CancelToken(); // Added for cancellation
@@ -39,5 +45,5 @@ class DownloadTask {
   /// Creates a new download task instance.
   ///
   /// Requires the [item] [QueueItem] to download from and the [fileExistsStrategy] to apply for this specific task.
-  DownloadTask(this.item, this.fileExistsStrategy); // Pass strategy
+  DownloadTask(this.item, this.fileExistsStrategy);
 }

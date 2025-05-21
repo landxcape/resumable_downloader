@@ -29,10 +29,9 @@ class QueueItem {
 
   /// An optional callback to receive a stream of download progress updates.
   ///
-  /// The stream emits [DownloadProgress], representing the percentage
-  /// of download completion. The stream closes when the download completes or fails.
-  final void Function(Stream<DownloadProgress> progressStream)?
-  progressCallback;
+  /// The callback emits [DownloadProgress], representing the [DownloadProgress]
+  /// of download completion.
+  final void Function(DownloadProgress progress)? progressCallback;
 
   /// Creates a new [QueueItem] with the specified [url], an optional [fileName], and optional [progressCallback].
   /// if [fileName] is not provided, the original URL is used.

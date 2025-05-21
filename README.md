@@ -105,10 +105,8 @@ _downloadManager.getFile(
   QueueItem(
     url: 'https://example.com/file.zip',
     fileName: 'download_file.zip', // optional
-    progressCallback: (progressStream) {
-      progressStream.listen((progress) {
-        print('Download progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
-      });
+    progressCallback: (progress) {
+      print('Download progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
     },
   ),
 );
@@ -118,10 +116,8 @@ _downloadManager.addToQueue(
   QueueItem(
     url: 'https://example.com/another_file.zip',
     fileName: 'download_another_file.zip', // optional
-    progressCallback: (progressStream) {
-      progressStream.listen((progress) {
-        print('Queued file progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
-      });
+    progressCallback: (progress) {
+      print('Queued file progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
     },
   ),
 );
@@ -131,19 +127,15 @@ _downloadManager.addAllToQueue([
   QueueItem(
     url: 'https://example.com/file1.zip',
     fileName: 'download_file1.zip', // optional
-    progressCallback: (stream) {
-      stream.listen((progress) {
-        print('File 1 progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
-      });
+    progressCallback: (progress) {
+      print('File 1 progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
     },
   ),
   QueueItem(
     url: 'https://example.com/file2.zip',
     fileName: 'download_file2.zip', // optional
-    progressCallback: (stream) {
-      stream.listen((progress) {
-        print('File 2 progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
-      });
+    progressCallback: (progress) {
+      print('File 2 progress: ${(progress.progress * 100).toStringAsFixed(1)}%');
     },
   ),
 ]);

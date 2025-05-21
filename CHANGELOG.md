@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.15] - 2025-05-21
+
+- optimized [QueueItem]'s progress callback to return [DownloadProgress] directly instead of a [Stream]. It was sending full stream on each callback instead of sending it at the first once. This was done to simplify callback to only return [DownloadProgress] and handle the stream internally.
+
 ## [0.0.14] - 2025-05-21
 
 - add initial file [DownloadProgress] status to progress stream before download

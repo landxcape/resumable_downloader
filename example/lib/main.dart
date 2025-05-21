@@ -62,13 +62,11 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         QueueItem(
           url: downloadUrl,
           fileName: 'download_file', // optional
-          progressCallback: (progressStream) {
-            progressStream.listen((progress) {
-              setState(() {
-                _progress = progress;
-                _status =
-                    'Downloading... ${progress.getProgressPercent()}% (${progress.getReceivedMB()}/${progress.getTotalMB()}MB)';
-              });
+          progressCallback: (progress) {
+            setState(() {
+              _progress = progress;
+              _status =
+                  'Downloading... ${progress.getProgressPercent()}% (${progress.getReceivedMB()}/${progress.getTotalMB()}MB)';
             });
           },
         ),
