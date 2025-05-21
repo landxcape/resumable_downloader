@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.14] - 2025-05-21
+
+- add initial file [DownloadProgress] status to progress stream before download
+
 ## [0.0.13] - 2025-05-21
 
 - fix [FileStorageStetragy.resume] not working as expected

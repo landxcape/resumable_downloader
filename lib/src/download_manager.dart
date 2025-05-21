@@ -225,6 +225,12 @@ class DownloadManager {
     if (fileExists) {
       final isValid = await _isDownloadedFileValid(downloadUrl, existingFile);
       if (isValid) {
+        final fileLength = await existingFile.length();
+        progress?.call(
+          Stream.value(
+            DownloadProgress(receivedByte: fileLength, totalByte: fileLength),
+          ),
+        );
         _log(
           'File already exists and is valid. Skipping download.',
           level: LogLevel.debug,
