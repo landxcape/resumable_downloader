@@ -193,6 +193,13 @@ class DownloadManager {
 
       return true;
     } catch (e) {
+      if (e is DioException && e.type == DioExceptionType.connectionError) {
+        _log(
+          'Failed to verify downloaded file, Connection Error: $e',
+          level: LogLevel.warning,
+        );
+        return true;
+      }
       _log('Failed to verify downloaded file: $e', level: LogLevel.warning);
       // If we can't verify, we assume the worst.
       return false;
@@ -669,7 +676,7 @@ class DownloadManager {
         // Ensure final directory exists before renaming
         await Directory(localPath).parent.create(recursive: true);
         await file.rename(
-          localPath,
+          './${localPath.split('/').last}',
         ); // Rename temp file (file variable) to final path (localPath)
         try {
           task.completer.complete(File(localPath));
@@ -932,9 +939,9 @@ class DownloadManager {
       }
 
       // Default fallback
-      return 'downloaded_file';
+      return item.fileName ?? segments.last;
     } catch (_) {
-      return 'downloaded_file';
+      return item.fileName ?? DateTime.now().millisecondsSinceEpoch.toString();
     }
   }
 
