@@ -676,7 +676,7 @@ class DownloadManager {
         // Ensure final directory exists before renaming
         await Directory(localPath).parent.create(recursive: true);
         await file.rename(
-          './${localPath.split('/').last}',
+          localPath,
         ); // Rename temp file (file variable) to final path (localPath)
         try {
           task.completer.complete(File(localPath));

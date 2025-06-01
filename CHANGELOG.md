@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.17] - 2025-06-01
+
+- fixed file rename issue
+
 ## [0.0.16] - 2025-05-28
 
 - fixed [FileStorageStetragy.resume] resume behavior when a custom name is provided.
