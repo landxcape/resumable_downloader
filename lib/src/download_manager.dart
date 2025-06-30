@@ -650,7 +650,10 @@ class DownloadManager {
             ); // Example: Signal unknown size
           }
         },
-        // deleteOnError: true, // Consider Dio deleting partial file on Dio error
+        deleteOnError:
+            fileExistsStrategy !=
+            FileExistsStrategy
+                .resume, // Consider Dio deleting partial file on Dio error
       );
 
       /// Check for cancellation *after* download completes (less likely but possible)
