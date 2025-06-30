@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.18] - 2025-06-30
+
+- Enable deleteOnError based on fileExistsStrategy: Sets the deleteOnError parameter to true unless the fileExistsStrategy is set to resume, ensuring partial files are deleted on errors except when resuming downloads.
+
 ## [0.0.17] - 2025-06-01
 
 - fixed file rename issue
