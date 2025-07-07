@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.19] - 2025-07-07
+
+- Fixed queue not processing on the lastest update
+
 ## [0.0.18] - 2025-06-30
 
 - Enable deleteOnError based on fileExistsStrategy: Sets the deleteOnError parameter to true unless the fileExistsStrategy is set to resume, ensuring partial files are deleted on errors except when resuming downloads.
