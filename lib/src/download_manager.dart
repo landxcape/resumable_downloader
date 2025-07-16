@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
+import 'dart:nativewrappers/_internal/vm/lib/ffi_allocation_patch.dart';
 
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
@@ -561,7 +562,7 @@ class DownloadManager {
 
       /// Get Directory object
       localPath =
-          '${targetDirectory.path}/${_getFilenameFromQueueItem(task.item)}';
+          '${targetDirectory.path}/${_getFilenameFromQueueItem(task.item)}${task.item.subDir == null ? '' : '/task.item.subDir'}';
       final tempPath = '$localPath.tmp';
       final file = File(tempPath);
       // Check existence of TEMP file for resume/replace logic within download phase
@@ -681,6 +682,7 @@ class DownloadManager {
         await file.rename(
           localPath,
         ); // Rename temp file (file variable) to final path (localPath)
+        task.item.onComplete.call();
         try {
           task.completer.complete(File(localPath));
         } catch (e) {

@@ -27,15 +27,30 @@ class QueueItem {
   /// An optional filename for the downloaded file. If not provided, the original URL is used.
   final String? fileName;
 
+  /// An optional subdirectory for the downloaded file.
+  /// If not provided, the file is downloaded to the default download directory set at initialization
+  final String? subDir;
+
   /// An optional callback to receive a stream of download progress updates.
   ///
   /// The callback emits [DownloadProgress], representing the [DownloadProgress]
   /// of download completion.
   final void Function(DownloadProgress progress)? progressCallback;
 
+  /// An optional callback to be invoked when the download completes
+  final void Function()? onComplete;
+
   /// Creates a new [QueueItem] with the specified [url], an optional [fileName], and optional [progressCallback].
   /// if [fileName] is not provided, the original URL is used.
-  QueueItem({required this.url, this.fileName, this.progressCallback});
+  /// If [subDir] is not provided, the file is downloaded to the default download directory set at initialization.
+  /// [onComplete] is invoked when the download completes.
+  QueueItem({
+    required this.url,
+    this.fileName,
+    this.subDir,
+    this.progressCallback,
+    this.onComplete,
+  });
 
   String get fileNameUrl => '${fileName == null ? '' : '$fileName-'}$url';
 }

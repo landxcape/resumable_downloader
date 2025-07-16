@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.20] - 2025-07-16
+
+- Added [subDir] and [onComplete] callback to queue item.
+
 ## [0.0.19] - 2025-07-07
 
 - Fixed queue not processing on the lastest update
