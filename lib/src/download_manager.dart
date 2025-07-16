@@ -561,7 +561,7 @@ class DownloadManager {
 
       /// Get Directory object
       localPath =
-          '${targetDirectory.path}/${_getFilenameFromQueueItem(task.item)}${task.item.subDir == null ? '' : '/task.item.subDir'}';
+          '${targetDirectory.path}${task.item.subDir == null ? '' : '/${task.item.subDir}'}/${_getFilenameFromQueueItem(task.item)}';
       final tempPath = '$localPath.tmp';
       final file = File(tempPath);
       // Check existence of TEMP file for resume/replace logic within download phase

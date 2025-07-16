@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.22] - 2025-07-16
+
+- Fixed [subDir] local path formating issue.
+
 ## [0.0.21] - 2025-07-16
 
 - Fixed [onComplete] null check error
