@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.21] - 2025-07-16
+
+- Fixed [onComplete] null check error
+
 ## [0.0.20] - 2025-07-16
 
 - Added [subDir] and [onComplete] callback to queue item.

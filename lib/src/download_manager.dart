@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
-import 'dart:nativewrappers/_internal/vm/lib/ffi_allocation_patch.dart';
 
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
@@ -682,7 +681,7 @@ class DownloadManager {
         await file.rename(
           localPath,
         ); // Rename temp file (file variable) to final path (localPath)
-        task.item.onComplete.call();
+        task.item.onComplete?.call();
         try {
           task.completer.complete(File(localPath));
         } catch (e) {
