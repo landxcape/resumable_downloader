@@ -576,7 +576,7 @@ class DownloadManager {
 
       /// Get Directory object
       localPath =
-          '${targetDirectory.path}${task.item.subDir == null ? '' : '/${task.item.subDir}'}/${_getFilenameFromQueueItem(task.item)}';
+          '${targetDirectory.path}/${_getFilenameFromQueueItem(task.item)}';
       final tempPath = '$localPath.tmp';
       final file = File(tempPath);
       // Check existence of TEMP file for resume/replace logic within download phase
@@ -989,7 +989,7 @@ class DownloadManager {
   ///
   /// Returns a [Future] that completes with the [Directory] object.
   /// Throws a [FileSystemException] if the directory cannot be created or accessed.
-  Future<Directory> _getLocalDirectory() async {
+  Future<Directory> _getLocalDirectory({String? subSubDir}) async {
     /// If completer exists and is not completed, wait for it
     if (_subdirectoryCompleter != null &&
         !_subdirectoryCompleter!.isCompleted) {
@@ -1004,7 +1004,7 @@ class DownloadManager {
 
     // Construct path using platform-specific separator
     final subdirectoryPath =
-        '${baseDirectory.path}${Platform.pathSeparator}$subDir';
+        '${baseDirectory.path}${Platform.pathSeparator}$subDir${subSubDir == null ? '' : '${Platform.pathSeparator}$subSubDir'}';
     final subdirectory = Directory(subdirectoryPath);
     try {
       if (!await subdirectory.exists()) {
