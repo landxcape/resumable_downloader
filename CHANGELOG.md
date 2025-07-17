@@ -2,7 +2,7 @@
 
 ## [0.0.24] - 2025-07-17
 
-- Update file path handling check
+- Update file path handling check.
 
 ## [0.0.23] - 2025-07-17
 
