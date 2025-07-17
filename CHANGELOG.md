@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.23] - 2025-07-17
+
+- Add [getFile] item to the front of the queue.
+
 ## [0.0.22] - 2025-07-16
 
 - Fixed [subDir] local path formating issue.

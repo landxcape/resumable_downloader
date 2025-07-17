@@ -219,7 +219,10 @@ class DownloadManager {
   /// Returns a Future that completes with the [File] object (either existing or downloaded),
   /// or throws an error based on the strategy or download failures.
   /// Returns `null` specifically if cancelled very early or in edge cases handled internally.
-  Future<File?> _checkFileAndCreateTask(QueueItem item) async {
+  Future<File?> _checkFileAndCreateTask(
+    QueueItem item, {
+    bool moveToFront = false,
+  }) async {
     final downloadUrl = item.url;
     final progress = item.progressCallback;
 
@@ -323,6 +326,18 @@ class DownloadManager {
           _activeDownloads[downloadUrl] ??
           _downloadQueue.firstWhere((t) => t.item.url == downloadUrl);
 
+      if (moveToFront) {
+        // If the task is in the queue, move it to the front
+        if (_downloadQueue.contains(existingTask)) {
+          _downloadQueue.remove(existingTask);
+          _downloadQueue.addFirst(existingTask); // Move to the top
+          _log(
+            'Moved download to top of queue: $downloadUrl',
+            level: LogLevel.info,
+          );
+        }
+      }
+
       // /// Call progress callback if provided and task hasn't completed yet
       if (progress != null && !existingTask.progressController.isClosed) {
         existingTask.initProgressCallback();
@@ -373,7 +388,7 @@ class DownloadManager {
     );
 
     // Calls internal check which uses the manager's default strategy.
-    return await _checkFileAndCreateTask(downloadItem);
+    return await _checkFileAndCreateTask(downloadItem, moveToFront: true);
   }
 
   /// Adds a URL to the download queue without waiting for completion.
