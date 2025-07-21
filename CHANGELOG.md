@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.25] - 2025-07-21
+
+- Fixed file download progress stream closure.
+
 ## [0.0.24] - 2025-07-17
 
 - Update file path handling check.
