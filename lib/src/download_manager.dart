@@ -615,6 +615,16 @@ class DownloadManager {
               .append, // Append if resuming, otherwise write (startByte check handles this)
       };
 
+      
+      Map<String, dynamic> headers = {};
+
+      if (task.item.authHeader != null) {
+        headers['Authorization'] = '${task.item.authHeader}';
+      }
+      if (startByte > 0) {
+        headers['Range'] = 'bytes=$startByte-'; // Add Range header for resume
+      }
+
       // Perform Dio download request
       await _dio.download(
         task.item.url,
@@ -625,10 +635,7 @@ class DownloadManager {
         /// Pass the cancel token
         cancelToken: task.cancelToken,
         options: Options(
-          headers:
-              startByte > 0
-                  ? {'Range': 'bytes=$startByte-'}
-                  : null, // Add Range header for resume
+          headers: headers,
           // Adjust response type if needed, default is usually Stream for download
           // responseType: ResponseType.stream, // Keep as default unless issues arise
         ),
