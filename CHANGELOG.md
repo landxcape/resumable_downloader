@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.0.25] - 2025-07-25
+## [0.0.26] - 2025-07-25
 
 - Add a method to delete directory from the [baseDirectory]
 
