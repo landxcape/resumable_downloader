@@ -1110,6 +1110,12 @@ class DownloadManager {
     }
   }
 
+  /// Deletes all files associated with the base directory and subdirectory. and deletes them recursively if specified.
+  Future<void> deleteRecursive({String? subDir, bool recursive = true}) async {
+    final dir = await _getLocalDirectory(subSubDir: subDir);
+    return dir.deleteSync(recursive: recursive);
+  }
+
   /// Disposes of the download manager, cancelling all downloads and releasing resources.
   ///
   /// Sets the manager to a disposed state, cancels all active and queued downloads,

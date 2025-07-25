@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.25] - 2025-07-25
+
+- Add a method to delete directory from the [baseDirectory]
+
 ## [0.0.25] - 2025-07-21
 
 - Fixed file download progress stream closure.
