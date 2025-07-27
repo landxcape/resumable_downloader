@@ -978,7 +978,7 @@ class DownloadManager {
   /// Throws if the subdirectory cannot be created/accessed.
   Future<String> _getDownloadPath(QueueItem item) async {
     /// Ensure target directory exists before returning path
-    final directory = await _getLocalDirectory();
+    final directory = await _getLocalDirectory(subSubDir: item.subDir);
     return '${directory.path}/${_getFilenameFromQueueItem(item)}';
   }
 

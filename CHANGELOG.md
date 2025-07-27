@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.27] - 2025-07-27
+
+- Fix passing [subDirectory] in [QueueItem]
+
 ## [0.0.26] - 2025-07-25
 
 - Add a method to delete directory from the [baseDirectory]
