@@ -1,8 +1,12 @@
 # Changelog
 
+## [0.0.28] - 2025-07-27
+
+- Fixed using [subDirectory] to get local path properly
+
 ## [0.0.27] - 2025-07-27
 
-- Fix passing [subDirectory] in [QueueItem]
+- Fixed passing [subDirectory] in [QueueItem]
 
 ## [0.0.26] - 2025-07-25
 

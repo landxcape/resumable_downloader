@@ -572,7 +572,9 @@ class DownloadManager {
 
     try {
       /// Ensure the target directory exists *just before* download
-      final targetDirectory = await _getLocalDirectory();
+      final targetDirectory = await _getLocalDirectory(
+        subSubDir: task.item.subDir,
+      );
 
       /// Get Directory object
       localPath =
