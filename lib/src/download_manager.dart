@@ -707,15 +707,15 @@ class DownloadManager {
       }
       // Ensure progress hits 1.0 and stream is closed on success
       if (!task.progressController.isClosed) {
-        task.progressController.stream.last.then((lastProgress) {
-          task.progressController.add(
-            DownloadProgress(
-              receivedByte: lastProgress.receivedByte,
-              totalByte: lastProgress.totalByte,
-            ),
-          );
-        });
-        await Future<void>.delayed(Duration.zero);
+        // task.progressController.stream.last.then((lastProgress) {
+        //   task.progressController.add(
+        //     DownloadProgress(
+        //       receivedByte: lastProgress.receivedByte,
+        //       totalByte: lastProgress.totalByte,
+        //     ),
+        //   );
+        // });
+        // await Future<void>.delayed(Duration.zero);
         await task.progressController.close();
       }
     } on DioException catch (e, s) {

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.29] - 2025-07-28
+
+- Removed redundent last progress update logic.
+
 ## [0.0.28] - 2025-07-27
 
 - Fixed using [subDirectory] to get local path properly
