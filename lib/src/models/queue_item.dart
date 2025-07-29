@@ -23,6 +23,9 @@ import 'download_progress.dart';
 class QueueItem {
   /// The full URL of the file to be downloaded.
   final String url;
+  
+  /// An optional authorization header.
+  final String? authHeader;
 
   /// An optional filename for the downloaded file. If not provided, the original URL is used.
   final String? fileName;
@@ -46,6 +49,7 @@ class QueueItem {
   /// [onComplete] is invoked when the download completes.
   QueueItem({
     required this.url,
+    this.authHeader,
     this.fileName,
     this.subDir,
     this.progressCallback,
