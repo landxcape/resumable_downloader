@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.30] - 2025-07-29
+
+- Updated sub directory logic to handle individual values assigned to [QueueItem].
+
 ## [0.0.29] - 2025-07-28
 
 - Removed redundent last progress update logic.

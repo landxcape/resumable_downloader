@@ -68,10 +68,6 @@ class DownloadManager {
   /// The Dio instance used for network requests. Configured internally.
   final _dio = Dio();
 
-  /// A Completer used to manage the asynchronous creation/verification of the
-  /// target download subdirectory. Ensures it's only checked/created once initially.
-  Completer<Directory>? _subdirectoryCompleter;
-
   /// A duration representing the delay between retries when a download task fails.
   Duration delayBetweenRetries;
 
@@ -987,27 +983,17 @@ class DownloadManager {
   /// Internal helper. Gets the [Directory] object for the specific subdirectory where downloads are stored.
   ///
   /// Ensures the subdirectory ([_baseDirectory]/[subDir]) exists, creating it recursively
-  /// if necessary. Uses a [Completer] (`_subdirectoryCompleter`) to avoid redundant
-  /// checks/creation attempts.
+  /// if necessary.
   ///
   /// Returns a [Future] that completes with the [Directory] object.
   /// Throws a [FileSystemException] if the directory cannot be created or accessed.
   Future<Directory> _getLocalDirectory({String? subSubDir}) async {
-    /// If completer exists and is not completed, wait for it
-    if (_subdirectoryCompleter != null &&
-        !_subdirectoryCompleter!.isCompleted) {
-      return await _subdirectoryCompleter!.future;
-    }
-
-    /// If completer is null or completed, start/re-run the check/creation logic
-    _subdirectoryCompleter = Completer<Directory>();
-
     /// get base directory from completer
     final baseDirectory = await _baseDirectoryCompleter.future;
 
     // Construct path using platform-specific separator
     final subdirectoryPath =
-        '${baseDirectory.path}${Platform.pathSeparator}$subDir${subSubDir == null ? '' : '${Platform.pathSeparator}$subSubDir'}';
+        '${baseDirectory.path}${subSubDir == null ? '' : '${Platform.pathSeparator}$subSubDir'}';
     final subdirectory = Directory(subdirectoryPath);
     try {
       if (!await subdirectory.exists()) {
@@ -1019,39 +1005,17 @@ class DownloadManager {
 
         /// Log success
       }
-
-      /// Complete with the directory object
-      // Check if already completed before completing again
-      if (!_subdirectoryCompleter!.isCompleted) {
-        _subdirectoryCompleter!.complete(subdirectory);
-      }
-    } catch (e, s) {
+    } catch (e) {
       // Catch stack trace as well
       _log(
         'Failed to create or access subdirectory: $subdirectoryPath, Error: $e',
         level: LogLevel.error,
       );
 
-      /// Complete with an error
-      // Check if already completed before completing with error
-      if (!_subdirectoryCompleter!.isCompleted) {
-        // Try to provide OSError if possible, otherwise wrap the error
-        final osError =
-            e is FileSystemException ? e.osError : OSError(e.toString(), 0);
-        _subdirectoryCompleter!.completeError(
-          FileSystemException(
-            'Failed to create required subdirectory',
-            subdirectoryPath,
-            osError,
-          ),
-          s, // Pass stack trace
-        );
-      }
-
       /// Re-throw the exception so the download fails correctly
       rethrow;
     }
-    return await _subdirectoryCompleter!.future;
+    return subdirectory;
   }
 
   /// Deletes the downloaded file corresponding to the URL, if it exists.
@@ -1146,9 +1110,6 @@ class DownloadManager {
     /// Ensure queue and active maps are clear (should be via cancelAll, but belt-and-suspenders)
     _downloadQueue.clear();
     _activeDownloads.clear();
-
-    // Consider nullifying the completer if it might hold resources or references
-    _subdirectoryCompleter = null;
 
     _log('DownloadManager disposed.');
   }
