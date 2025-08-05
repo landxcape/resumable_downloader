@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.31] - 2025-08-05
+
+- Added method to get the download path for the [QueueItem].
+
 ## [0.0.30] - 2025-07-29
 
 - Updated sub directory logic to handle individual values assigned to [QueueItem].

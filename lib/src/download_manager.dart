@@ -980,6 +980,9 @@ class DownloadManager {
     return '${directory.path}/${_getFilenameFromQueueItem(item)}';
   }
 
+  /// Returns the download path for the [QueueItem]
+  Future<String> getDownloadPath(QueueItem item) => _getDownloadPath(item);
+
   /// Internal helper. Gets the [Directory] object for the specific subdirectory where downloads are stored.
   ///
   /// Ensures the subdirectory ([_baseDirectory]/[subDir]) exists, creating it recursively
