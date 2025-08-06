@@ -23,7 +23,7 @@ import 'download_progress.dart';
 class QueueItem {
   /// The full URL of the file to be downloaded.
   final String url;
-  
+
   /// An optional header for the HTTP request. If not provided, default or no headers are sent.
   /// if given, it will replace the default headers with same key
   final Map<String, dynamic>? optionalHeaders;
