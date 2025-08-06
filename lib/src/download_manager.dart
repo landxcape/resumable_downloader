@@ -68,12 +68,11 @@ class DownloadManager {
   /// The Dio instance used for network requests. Configured internally.
   final _dio = Dio();
 
-  /// A Completer used to manage the asynchronous creation/verification of the
-  /// target download subdirectory. Ensures it's only checked/created once initially.
-  Completer<Directory>? _subdirectoryCompleter;
-
   /// A duration representing the delay between retries when a download task fails.
   Duration delayBetweenRetries;
+
+  /// default headers for the download requests
+  final Map<String, dynamic>? _headers;
 
   /// Creates a [DownloadManager] instance.
   ///
@@ -96,7 +95,8 @@ class DownloadManager {
     this.logger,
     this.fileExistsStrategy = FileExistsStrategy.resume, // Default strategy
     this.delayBetweenRetries = Duration.zero,
-  }) {
+    Map<String, dynamic>? headers,
+  }) : _headers = headers {
     _initBaseDirectory(baseDirectory);
 
     /// Ensure base directory exists once
@@ -572,7 +572,9 @@ class DownloadManager {
 
     try {
       /// Ensure the target directory exists *just before* download
-      final targetDirectory = await _getLocalDirectory();
+      final targetDirectory = await _getLocalDirectory(
+        subSubDir: task.item.subDir,
+      );
 
       /// Get Directory object
       localPath =
@@ -615,15 +617,11 @@ class DownloadManager {
               .append, // Append if resuming, otherwise write (startByte check handles this)
       };
 
-      
-      Map<String, dynamic> headers = {};
-
-      if (task.item.authHeader != null) {
-        headers['Authorization'] = '${task.item.authHeader}';
-      }
-      if (startByte > 0) {
-        headers['Range'] = 'bytes=$startByte-'; // Add Range header for resume
-      }
+      final Map<String, dynamic> headers = {
+        if (_headers != null) ..._headers,
+        if (task.item.optionalHeader != null) ...task.item.optionalHeader!,
+        if (startByte > 0) 'Range': 'bytes=$startByte-',
+      };
 
       // Perform Dio download request
       await _dio.download(
@@ -635,7 +633,10 @@ class DownloadManager {
         /// Pass the cancel token
         cancelToken: task.cancelToken,
         options: Options(
-          headers: headers,
+          headers:
+              headers.isNotEmpty
+                  ? headers
+                  : null, // Add Range header for resume
           // Adjust response type if needed, default is usually Stream for download
           // responseType: ResponseType.stream, // Keep as default unless issues arise
         ),
@@ -712,15 +713,15 @@ class DownloadManager {
       }
       // Ensure progress hits 1.0 and stream is closed on success
       if (!task.progressController.isClosed) {
-        task.progressController.stream.last.then((lastProgress) {
-          task.progressController.add(
-            DownloadProgress(
-              receivedByte: lastProgress.receivedByte,
-              totalByte: lastProgress.totalByte,
-            ),
-          );
-        });
-        await Future<void>.delayed(Duration.zero);
+        // task.progressController.stream.last.then((lastProgress) {
+        //   task.progressController.add(
+        //     DownloadProgress(
+        //       receivedByte: lastProgress.receivedByte,
+        //       totalByte: lastProgress.totalByte,
+        //     ),
+        //   );
+        // });
+        // await Future<void>.delayed(Duration.zero);
         await task.progressController.close();
       }
     } on DioException catch (e, s) {
@@ -985,34 +986,27 @@ class DownloadManager {
   /// Throws if the subdirectory cannot be created/accessed.
   Future<String> _getDownloadPath(QueueItem item) async {
     /// Ensure target directory exists before returning path
-    final directory = await _getLocalDirectory();
+    final directory = await _getLocalDirectory(subSubDir: item.subDir);
     return '${directory.path}/${_getFilenameFromQueueItem(item)}';
   }
+
+  /// Returns the download path for the [QueueItem]
+  Future<String> getDownloadPath(QueueItem item) => _getDownloadPath(item);
 
   /// Internal helper. Gets the [Directory] object for the specific subdirectory where downloads are stored.
   ///
   /// Ensures the subdirectory ([_baseDirectory]/[subDir]) exists, creating it recursively
-  /// if necessary. Uses a [Completer] (`_subdirectoryCompleter`) to avoid redundant
-  /// checks/creation attempts.
+  /// if necessary.
   ///
   /// Returns a [Future] that completes with the [Directory] object.
   /// Throws a [FileSystemException] if the directory cannot be created or accessed.
   Future<Directory> _getLocalDirectory({String? subSubDir}) async {
-    /// If completer exists and is not completed, wait for it
-    if (_subdirectoryCompleter != null &&
-        !_subdirectoryCompleter!.isCompleted) {
-      return await _subdirectoryCompleter!.future;
-    }
-
-    /// If completer is null or completed, start/re-run the check/creation logic
-    _subdirectoryCompleter = Completer<Directory>();
-
     /// get base directory from completer
     final baseDirectory = await _baseDirectoryCompleter.future;
 
     // Construct path using platform-specific separator
     final subdirectoryPath =
-        '${baseDirectory.path}${Platform.pathSeparator}$subDir${subSubDir == null ? '' : '${Platform.pathSeparator}$subSubDir'}';
+        '${baseDirectory.path}${subSubDir == null ? '' : '${Platform.pathSeparator}$subSubDir'}';
     final subdirectory = Directory(subdirectoryPath);
     try {
       if (!await subdirectory.exists()) {
@@ -1024,39 +1018,17 @@ class DownloadManager {
 
         /// Log success
       }
-
-      /// Complete with the directory object
-      // Check if already completed before completing again
-      if (!_subdirectoryCompleter!.isCompleted) {
-        _subdirectoryCompleter!.complete(subdirectory);
-      }
-    } catch (e, s) {
+    } catch (e) {
       // Catch stack trace as well
       _log(
         'Failed to create or access subdirectory: $subdirectoryPath, Error: $e',
         level: LogLevel.error,
       );
 
-      /// Complete with an error
-      // Check if already completed before completing with error
-      if (!_subdirectoryCompleter!.isCompleted) {
-        // Try to provide OSError if possible, otherwise wrap the error
-        final osError =
-            e is FileSystemException ? e.osError : OSError(e.toString(), 0);
-        _subdirectoryCompleter!.completeError(
-          FileSystemException(
-            'Failed to create required subdirectory',
-            subdirectoryPath,
-            osError,
-          ),
-          s, // Pass stack trace
-        );
-      }
-
       /// Re-throw the exception so the download fails correctly
       rethrow;
     }
-    return await _subdirectoryCompleter!.future;
+    return subdirectory;
   }
 
   /// Deletes the downloaded file corresponding to the URL, if it exists.
@@ -1117,6 +1089,12 @@ class DownloadManager {
     }
   }
 
+  /// Deletes all files associated with the base directory and subdirectory. and deletes them recursively if specified.
+  Future<void> deleteRecursive({String? subDir, bool recursive = true}) async {
+    final dir = await _getLocalDirectory(subSubDir: subDir);
+    return dir.deleteSync(recursive: recursive);
+  }
+
   /// Disposes of the download manager, cancelling all downloads and releasing resources.
   ///
   /// Sets the manager to a disposed state, cancels all active and queued downloads,
@@ -1145,9 +1123,6 @@ class DownloadManager {
     /// Ensure queue and active maps are clear (should be via cancelAll, but belt-and-suspenders)
     _downloadQueue.clear();
     _activeDownloads.clear();
-
-    // Consider nullifying the completer if it might hold resources or references
-    _subdirectoryCompleter = null;
 
     _log('DownloadManager disposed.');
   }

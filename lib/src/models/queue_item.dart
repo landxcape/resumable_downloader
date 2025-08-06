@@ -24,8 +24,8 @@ class QueueItem {
   /// The full URL of the file to be downloaded.
   final String url;
   
-  /// An optional authorization header.
-  final String? authHeader;
+  /// An optional header for the HTTP request. If not provided, default or no headers are sent.
+  final Map<String, dynamic>? optionalHeader;
 
   /// An optional filename for the downloaded file. If not provided, the original URL is used.
   final String? fileName;
@@ -49,7 +49,7 @@ class QueueItem {
   /// [onComplete] is invoked when the download completes.
   QueueItem({
     required this.url,
-    this.authHeader,
+    this.optionalHeader,
     this.fileName,
     this.subDir,
     this.progressCallback,
