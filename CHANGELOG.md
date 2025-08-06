@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.33] - 2025-08-06
+
+- Refactor code.
+
 ## [0.0.32] - 2025-08-06
 
 - Added optional headers to the [DownloadManager] and the [QueueItem]
