@@ -25,7 +25,8 @@ class QueueItem {
   final String url;
   
   /// An optional header for the HTTP request. If not provided, default or no headers are sent.
-  final Map<String, dynamic>? optionalHeader;
+  /// if given, it will replace the default headers with same key
+  final Map<String, dynamic>? optionalHeaders;
 
   /// An optional filename for the downloaded file. If not provided, the original URL is used.
   final String? fileName;
@@ -49,7 +50,7 @@ class QueueItem {
   /// [onComplete] is invoked when the download completes.
   QueueItem({
     required this.url,
-    this.optionalHeader,
+    this.optionalHeaders,
     this.fileName,
     this.subDir,
     this.progressCallback,

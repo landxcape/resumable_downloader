@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.32] - 2025-08-06
+
+- Added optional headers to the [DownloadManager] and the [QueueItem]
+
 ## [0.0.31] - 2025-08-05
 
 - Added method to get the download path for the [QueueItem].

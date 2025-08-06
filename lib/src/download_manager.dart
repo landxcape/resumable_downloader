@@ -72,6 +72,7 @@ class DownloadManager {
   Duration delayBetweenRetries;
 
   /// default headers for the download requests
+  /// if [optionalHeaders] given, it will replace the default headers with same key
   final Map<String, dynamic>? _headers;
 
   /// Creates a [DownloadManager] instance.
@@ -619,7 +620,7 @@ class DownloadManager {
 
       final Map<String, dynamic> headers = {
         if (_headers != null) ..._headers,
-        if (task.item.optionalHeader != null) ...task.item.optionalHeader!,
+        if (task.item.optionalHeaders != null) ...task.item.optionalHeaders!,
         if (startByte > 0) 'Range': 'bytes=$startByte-',
       };
 
