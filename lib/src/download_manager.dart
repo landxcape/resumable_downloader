@@ -71,6 +71,9 @@ class DownloadManager {
   /// A duration representing the delay between retries when a download task fails.
   Duration delayBetweenRetries;
 
+  /// default headers for the download requests
+  final Map<String, dynamic>? _headers;
+
   /// Creates a [DownloadManager] instance.
   ///
   /// - [subDir]: Required. The name of the subdirectory within [baseDirectory]
@@ -92,7 +95,8 @@ class DownloadManager {
     this.logger,
     this.fileExistsStrategy = FileExistsStrategy.resume, // Default strategy
     this.delayBetweenRetries = Duration.zero,
-  }) {
+    Map<String, dynamic>? headers,
+  }) : _headers = headers {
     _initBaseDirectory(baseDirectory);
 
     /// Ensure base directory exists once
@@ -613,6 +617,12 @@ class DownloadManager {
               .append, // Append if resuming, otherwise write (startByte check handles this)
       };
 
+      final Map<String, dynamic> headers = {
+        if (_headers != null) ..._headers,
+        if (task.item.optionalHeader != null) ...task.item.optionalHeader!,
+        if (startByte > 0) 'Range': 'bytes=$startByte-',
+      };
+
       // Perform Dio download request
       await _dio.download(
         task.item.url,
@@ -624,8 +634,8 @@ class DownloadManager {
         cancelToken: task.cancelToken,
         options: Options(
           headers:
-              startByte > 0
-                  ? {'Range': 'bytes=$startByte-'}
+              headers.isNotEmpty
+                  ? headers
                   : null, // Add Range header for resume
           // Adjust response type if needed, default is usually Stream for download
           // responseType: ResponseType.stream, // Keep as default unless issues arise
