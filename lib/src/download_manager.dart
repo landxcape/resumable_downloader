@@ -107,7 +107,9 @@ class DownloadManager {
   void _initBaseDirectory(Directory? custom) async {
     try {
       if (custom != null) {
-        _baseDirectoryCompleter.complete(custom);
+        final customPath = custom.path;
+        final customDir = Directory('$customPath/$subDir');
+        _baseDirectoryCompleter.complete(customDir);
         return;
       }
 
