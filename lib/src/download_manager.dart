@@ -469,6 +469,11 @@ class DownloadManager {
   /// This method is the core loop that picks tasks from `_downloadQueue` and
   /// initiates their download via `_download`, respecting `maxConcurrentDownloads`.
   /// It ensures it doesn't run concurrently with itself using the `_isProcessing` flag.
+  ///
+  /// This method can be used to manually trigger resuming the queue process, eg. when the downloader queue freezes.
+  Future<void> processQueue() async => await _processQueue();
+
+  /// implementaiton of processQueue()
   Future<void> _processQueue() async {
     if (_isProcessing || _isDisposed) return;
 

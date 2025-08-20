@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.35] - 2025-08-20
+
+- Exposed [processQueue] public method to handle manual triggering queue process when stuck.
+
 ## [0.0.34] - 2025-08-18
 
 - Fixed [subDir] not working on custom
