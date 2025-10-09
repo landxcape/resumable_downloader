@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.36] - 2025-10-09
+
+- Added `allowAutoDelete` to the [DownloadManager] to allow auto delete the file if the download fails. Defaults to `true`.
+
 ## [0.0.35] - 2025-08-20
 
 - Exposed [processQueue] public method to handle manual triggering queue process when stuck.

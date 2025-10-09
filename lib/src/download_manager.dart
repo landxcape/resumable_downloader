@@ -75,6 +75,15 @@ class DownloadManager {
   /// if [optionalHeaders] given, it will replace the default headers with same key
   final Map<String, dynamic>? _headers;
 
+  /// If true, allows the manager to automatically delete partially downloaded
+  /// files (`.tmp` files) when a download fails permanently (e.g., after
+  /// exceeding `maxRetries`). Defaults to `true`.
+  ///
+  /// When `false`, failed `.tmp` files are left on disk, allowing for manual
+  /// inspection or potential external resume attempts. When `true`, these
+  /// files are cleaned up to save space.
+  final bool allowAutoDelete;
+
   /// Creates a [DownloadManager] instance.
   ///
   /// - [subDir]: Required. The name of the subdirectory within [baseDirectory]
@@ -96,6 +105,7 @@ class DownloadManager {
     this.logger,
     this.fileExistsStrategy = FileExistsStrategy.resume, // Default strategy
     this.delayBetweenRetries = Duration.zero,
+    this.allowAutoDelete = true,
     Map<String, dynamic>? headers,
   }) : _headers = headers {
     _initBaseDirectory(baseDirectory);
@@ -248,7 +258,7 @@ class DownloadManager {
         );
       } else {
         _log('Corrupted file detected. Deleting.', level: LogLevel.warning);
-        await existingFile.delete();
+        if (allowAutoDelete) await existingFile.delete();
       }
     }
 
@@ -603,7 +613,7 @@ class DownloadManager {
           'Explicitly deleting existing temp file for replacement: $tempPath',
           level: LogLevel.debug,
         );
-        await file.delete();
+        if (allowAutoDelete) await file.delete();
       }
 
       // Determine start byte for potential resume
