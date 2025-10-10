@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.37] - 2025-10-10
+
+- Added network check before download.
+
 ## [0.0.36] - 2025-10-09
 
 - Added `allowAutoDelete` to the [DownloadManager] to allow auto delete the file if the download fails. Defaults to `true`.
