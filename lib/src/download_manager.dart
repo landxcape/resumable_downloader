@@ -13,6 +13,7 @@ import 'models/download_progress.dart';
 import 'models/download_task.dart';
 import 'models/log_record.dart';
 import 'models/queue_item.dart';
+import 'network_info.dart';
 
 // --- Download Manager ---
 
@@ -186,6 +187,8 @@ class DownloadManager {
   ///
   /// Throws no exceptions.
   Future<bool> _isDownloadedFileValid(String url, File file) async {
+    if (!(await NetworkInfo.instance.isConnected)) return true;
+
     try {
       final response = await _dio.head<dynamic>(
         url,
@@ -641,6 +644,7 @@ class DownloadManager {
         if (startByte > 0) 'Range': 'bytes=$startByte-',
       };
 
+      if (!(await NetworkInfo.instance.isConnected)) return;
       // Perform Dio download request
       await _dio.download(
         task.item.url,
