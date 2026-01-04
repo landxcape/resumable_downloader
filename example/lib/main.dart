@@ -61,7 +61,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       final file = await _downloadManager.getFile(
         QueueItem(
           url: downloadUrl,
-          fileName: 'download_file', // optional
+          fileName: 'download_file.mp4', // optional
           progressCallback: (progress) {
             setState(() {
               _progress = progress;

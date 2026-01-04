@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.38] - 2026-01-04
+
+- Fixed `_getFilenameFromQueueItem` to return the user-provided `fileName` exactly as is, without automatic extension guessing.
+
 ## [0.0.37] - 2025-10-10
 
 - Added network check before download.
@@ -156,4 +160,5 @@
 - Concurrent and queued download handling.
 - File existence strategies (`keepExisting`, `resume`, `replace`, `fail`).
 - Download progress updates and cancelation support.
+- Full control over downloads using `Dio`, custom directory setup, and retry handling.
 - Full control over downloads using `Dio`, custom directory setup, and retry handling.
