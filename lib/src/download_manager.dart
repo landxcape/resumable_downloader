@@ -967,6 +967,10 @@ class DownloadManager {
   ///
   /// Returns the extracted filename or a default placeholder.
   String _getFilenameFromQueueItem(QueueItem item) {
+    if (item.fileName != null) {
+      return item.fileName!;
+    }
+
     try {
       final uri = Uri.parse(item.url);
 
@@ -975,7 +979,7 @@ class DownloadManager {
         final value = entry.value;
         if (value.contains('.') && !value.endsWith('.')) {
           final nameParts = value.split('.');
-          return [item.fileName ?? nameParts.first, nameParts.last].join('.');
+          return [nameParts.first, nameParts.last].join('.');
         }
       }
 
@@ -985,14 +989,14 @@ class DownloadManager {
         final last = segments.last;
         if (last.contains('.') && !last.endsWith('/')) {
           final nameParts = last.split('.');
-          return [item.fileName ?? nameParts.first, nameParts.last].join('.');
+          return [nameParts.first, nameParts.last].join('.');
         }
       }
 
       // Default fallback
-      return item.fileName ?? segments.last;
+      return segments.last;
     } catch (_) {
-      return item.fileName ?? DateTime.now().millisecondsSinceEpoch.toString();
+      return DateTime.now().millisecondsSinceEpoch.toString();
     }
   }
 
