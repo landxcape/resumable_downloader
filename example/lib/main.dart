@@ -53,10 +53,17 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
     super.dispose();
   }
 
-  void _startRequest(DownloadRequest request) {
+  void _startRequest(DownloadRequest request, {_TransferEntry? restarting}) {
     final task = _manager.enqueue(request);
-    final entry = _TransferEntry(request: request, task: task);
-    setState(() => _entries.insert(0, entry));
+    final entry = restarting ?? _TransferEntry(request: request, task: task);
+    setState(() {
+      if (restarting == null) {
+        _entries.insert(0, entry);
+      } else {
+        entry.task = task;
+        entry.update = null;
+      }
+    });
     task.updates.listen((update) {
       if (!mounted) {
         return;
@@ -64,6 +71,10 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
       setState(() => entry.update = update);
     });
     unawaited(task.result.then<void>((_) {}, onError: (_, _) {}));
+  }
+
+  void _restart(_TransferEntry entry) {
+    _startRequest(entry.request, restarting: entry);
   }
 
   Future<void> _showAddSheet() {
@@ -90,7 +101,7 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
         ],
       ),
       body: switch (_selectedIndex) {
-        0 => _TransfersView(entries: _entries),
+        0 => _TransfersView(entries: _entries, onRestart: _restart),
         1 => _PresetsView(onStart: _startRequest),
         _ => _ConfigurationView(configuration: _configuration),
       },
@@ -151,8 +162,8 @@ class _AddDownloadSheetState extends State<_AddDownloadSheet> {
 
   void _queue() {
     final url = Uri.tryParse(_urlController.text.trim());
-    if (url == null || !url.hasScheme) {
-      setState(() => _urlError = 'Enter a valid URL with a scheme.');
+    if (url == null || !(url.isScheme('http') || url.isScheme('https'))) {
+      setState(() => _urlError = 'Enter a valid HTTP or HTTPS URL.');
       return;
     }
     widget.onQueue(
@@ -219,9 +230,10 @@ class _AddDownloadSheetState extends State<_AddDownloadSheet> {
 }
 
 class _TransfersView extends StatelessWidget {
-  const _TransfersView({required this.entries});
+  const _TransfersView({required this.entries, required this.onRestart});
 
   final List<_TransferEntry> entries;
+  final void Function(_TransferEntry entry) onRestart;
 
   @override
   Widget build(BuildContext context) {
@@ -236,23 +248,30 @@ class _TransfersView extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       itemCount: entries.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (context, index) => _TransferTile(entry: entries[index]),
+      itemBuilder:
+          (context, index) =>
+              _TransferTile(entry: entries[index], onRestart: onRestart),
     );
   }
 }
 
 class _TransferTile extends StatelessWidget {
-  const _TransferTile({required this.entry});
+  const _TransferTile({required this.entry, required this.onRestart});
 
   final _TransferEntry entry;
+  final void Function(_TransferEntry entry) onRestart;
 
   @override
   Widget build(BuildContext context) {
     final update = entry.update;
     final state = update?.status ?? DownloadStatus.queued;
+    final pathSegments = entry.request.url.pathSegments;
     final fileName =
-        entry.request.fileName ?? entry.request.url.pathSegments.last;
+        entry.request.fileName ??
+        (pathSegments.isEmpty ? entry.request.url.host : pathSegments.last);
     final ranges = update?.ranges ?? const <DownloadRangeUpdate>[];
+    final canRestart =
+        state == DownloadStatus.failed || state == DownloadStatus.cancelled;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -276,6 +295,17 @@ class _TransferTile extends StatelessWidget {
             const SizedBox(height: 8),
             AdaptiveProgressBar(ranges: ranges),
             const SizedBox(height: 8),
+            if (state == DownloadStatus.failed && update?.error != null) ...[
+              Text(
+                update!.error.toString(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 Expanded(
@@ -292,6 +322,12 @@ class _TransferTile extends StatelessWidget {
                   TextButton(
                     onPressed: () => unawaited(entry.task.cancel()),
                     child: const Text('Cancel'),
+                  )
+                else if (canRestart)
+                  IconButton(
+                    tooltip: 'Restart transfer',
+                    onPressed: () => onRestart(entry),
+                    icon: const Icon(Icons.refresh),
                   ),
               ],
             ),
@@ -408,7 +444,7 @@ class _TransferEntry {
   _TransferEntry({required this.request, required this.task});
 
   final DownloadRequest request;
-  final DownloadTask task;
+  DownloadTask task;
   DownloadUpdate? update;
 }
 
