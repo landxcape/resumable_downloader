@@ -64,7 +64,10 @@ class TransferCoordinator {
     DownloadTaskController controller,
     DownloadRequest request,
   ) async {
+    var registeredWithScheduler = false;
     try {
+      _scheduler.enqueue(controller.task.id);
+      registeredWithScheduler = true;
       controller.emit(
         DownloadUpdate(
           taskId: controller.task.id,
@@ -72,7 +75,14 @@ class TransferCoordinator {
           receivedBytes: 0,
         ),
       );
-      final probeResult = await _probe.probe(request.url, headers: request.headers);
+      final probeLease = await _scheduler.acquire(controller.task.id);
+      final probeResult = await (() async {
+        try {
+          return await _probe.probe(request.url, headers: request.headers);
+        } finally {
+          await probeLease.release();
+        }
+      })();
       final totalBytes = probeResult.totalBytes;
       if (totalBytes == null) {
         throw StateError('V2 single-stream transfers require a content length');
@@ -95,7 +105,6 @@ class TransferCoordinator {
         ),
       );
       if (plan.isMultipart) {
-        _scheduler.enqueue(controller.task.id);
         final worker = RangeWorker(
           scheduler: _scheduler,
           transport: _transport,
@@ -114,15 +123,21 @@ class TransferCoordinator {
           ),
         );
       } else {
-        final response = await _transport.get(request.url, headers: request.headers);
-        if (response.statusCode != HttpStatus.ok) {
-          throw HttpException('Unexpected download status ${response.statusCode}');
+        final lease = await _scheduler.acquire(controller.task.id);
+        try {
+          final response =
+              await _transport.get(request.url, headers: request.headers);
+          if (response.statusCode != HttpStatus.ok) {
+            throw HttpException('Unexpected download status ${response.statusCode}');
+          }
+          await _storage.writeRange(
+            partial,
+            ByteRange(0, totalBytes - 1),
+            response.body,
+          );
+        } finally {
+          await lease.release();
         }
-        await _storage.writeRange(
-          partial,
-          ByteRange(0, totalBytes - 1),
-          response.body,
-        );
       }
       final output = await _storage.finalize(
         partial,
@@ -149,6 +164,10 @@ class TransferCoordinator {
         ),
       );
       controller.fail(error, stackTrace);
+    } finally {
+      if (registeredWithScheduler) {
+        _scheduler.complete(controller.task.id);
+      }
     }
   }
 

@@ -35,6 +35,24 @@ class TransferScheduler {
     return waiter.completer.future;
   }
 
+  void complete(String transferId) {
+    final state = _transfers[transferId];
+    if (state == null) {
+      return;
+    }
+    if (state.activeConnections != 0) {
+      throw StateError('Cannot complete a transfer with active connections');
+    }
+    _transfers.remove(transferId);
+    for (final waiter in _waiters.where((item) => item.transferId == transferId)) {
+      waiter.completer.completeError(
+        StateError('Transfer completed before its connection was granted'),
+      );
+    }
+    _waiters.removeWhere((item) => item.transferId == transferId);
+    _drain();
+  }
+
   void _drain() {
     while (_activeConnections < _configuration.maxConcurrentConnections) {
       final waiter = _nextEligibleWaiter();
