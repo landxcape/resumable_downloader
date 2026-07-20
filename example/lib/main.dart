@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'
+    show debugPrint, debugPrintStack, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:resumable_downloader/resumable_downloader.dart';
 
@@ -70,7 +72,17 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
       }
       setState(() => entry.update = update);
     });
-    unawaited(task.result.then<void>((_) {}, onError: (_, _) {}));
+    unawaited(
+      task.result.then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stackTrace) {
+          if (kDebugMode) {
+            debugPrint('Download failed for ${request.url}: $error');
+            debugPrintStack(stackTrace: stackTrace);
+          }
+        },
+      ),
+    );
   }
 
   void _restart(_TransferEntry entry) {
