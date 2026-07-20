@@ -14,115 +14,383 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(home: DownloadHomePage());
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        useMaterial3: true,
+      ),
+      home: const DownloadLabPage(),
+    );
   }
 }
 
-class DownloadHomePage extends StatefulWidget {
-  const DownloadHomePage({super.key});
+class DownloadLabPage extends StatefulWidget {
+  const DownloadLabPage({super.key});
 
   @override
-  State<DownloadHomePage> createState() => _DownloadHomePageState();
+  State<DownloadLabPage> createState() => _DownloadLabPageState();
 }
 
-class _DownloadHomePageState extends State<DownloadHomePage> {
-  late final DownloadManager _downloadManager = DownloadManager(
-    subdirectory: 'downloads',
-    configuration: DownloadConfiguration(
-      maxConcurrentDownloads: 2,
-      maxConcurrentConnections: 4,
-      maxConnectionsPerDownload: 3,
-      maxRetries: 2,
-    ),
+class _DownloadLabPageState extends State<DownloadLabPage> {
+  final DownloadConfiguration _configuration = DownloadConfiguration(
+    maxConcurrentDownloads: 3,
+    maxConcurrentConnections: 6,
+    maxConnectionsPerDownload: 4,
+    minimumBytesPerPart: 8 * 1024 * 1024,
+    maxRetries: 2,
   );
-
-  final String downloadUrl =
-      'https://archive.org/download/tomandjerry_1080p/S1940E01%20-%20Puss%20Gets%20The%20Boot%20%281080p%20BluRay%20x265%20Ghost%29.mp4';
-  DownloadUpdate? _update;
-  DownloadTask? _task;
-  bool _isDownloading = false;
-  String _status = '';
-
-  Future<void> _startDownload() async {
-    setState(() {
-      _isDownloading = true;
-      _status = 'Starting download...';
-    });
-
-    try {
-      final task = _downloadManager.enqueue(
-        DownloadRequest(
-          url: Uri.parse(downloadUrl),
-          fileName: 'download_file.mp4',
-        ),
-      );
-      _task = task;
-      task.updates.listen((update) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _update = update;
-          _status = '${update.status.name}: ${update.receivedBytes} bytes';
-        });
-      });
-      final file = await task.result;
-
-      setState(() {
-        _status = 'Download complete: ${file.path}';
-      });
-    } catch (e) {
-      setState(() {
-        _status = 'Download failed: $e';
-      });
-    } finally {
-      setState(() {
-        _isDownloading = false;
-      });
-    }
-  }
-
-  void _cancel() {
-    unawaited(_task?.cancel() ?? Future<void>.value());
-    setState(() {
-      _status = 'Cancelling download...';
-    });
-  }
+  final List<_TransferEntry> _entries = <_TransferEntry>[];
+  late final DownloadManager _manager = DownloadManager(
+    subdirectory: 'transfer_lab',
+    configuration: _configuration,
+  );
+  var _selectedIndex = 0;
 
   @override
   void dispose() {
-    unawaited(_downloadManager.dispose());
+    unawaited(_manager.dispose());
     super.dispose();
+  }
+
+  void _startRequest(DownloadRequest request) {
+    final task = _manager.enqueue(request);
+    final entry = _TransferEntry(request: request, task: task);
+    setState(() => _entries.insert(0, entry));
+    task.updates.listen((update) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => entry.update = update);
+    });
+    unawaited(task.result.then<void>((_) {}, onError: (_, _) {}));
+  }
+
+  Future<void> _showAddSheet() async {
+    final urlController = TextEditingController();
+    final fileNameController = TextEditingController();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder:
+          (context) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              20,
+              20,
+              20 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Add download',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: urlController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Download URL',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: fileNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'File name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    final url = Uri.tryParse(urlController.text.trim());
+                    if (url == null || !url.hasScheme) {
+                      return;
+                    }
+                    _startRequest(
+                      DownloadRequest(
+                        url: url,
+                        fileName:
+                            fileNameController.text.trim().isEmpty
+                                ? null
+                                : fileNameController.text.trim(),
+                      ),
+                    );
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Queue download'),
+                ),
+              ],
+            ),
+          ),
+    );
+    urlController.dispose();
+    fileNameController.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final titles = <String>['Transfers', 'Presets', 'Configuration'];
     return Scaffold(
-      appBar: AppBar(title: const Text('Resumable Downloader Example')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(
+        title: Text(titles[_selectedIndex]),
+        actions: [
+          if (_selectedIndex == 0)
+            IconButton(
+              tooltip: 'Add download',
+              onPressed: _showAddSheet,
+              icon: const Icon(Icons.add),
+            ),
+        ],
+      ),
+      body: switch (_selectedIndex) {
+        0 => _TransfersView(entries: _entries),
+        1 => _PresetsView(onStart: _startRequest),
+        _ => _ConfigurationView(configuration: _configuration),
+      },
+      floatingActionButton:
+          _selectedIndex == 0
+              ? FloatingActionButton.extended(
+                onPressed: _showAddSheet,
+                icon: const Icon(Icons.add),
+                label: const Text('Add URL'),
+              )
+              : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected:
+            (index) => setState(() => _selectedIndex = index),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.download_outlined),
+            selectedIcon: Icon(Icons.download),
+            label: 'Transfers',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.science_outlined),
+            selectedIcon: Icon(Icons.science),
+            label: 'Presets',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.tune_outlined),
+            selectedIcon: Icon(Icons.tune),
+            label: 'Configuration',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TransfersView extends StatelessWidget {
+  const _TransfersView({required this.entries});
+
+  final List<_TransferEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return const Center(
+        child: Text(
+          'Add a URL or start a preset to inspect transfer behavior.',
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+      itemCount: entries.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) => _TransferTile(entry: entries[index]),
+    );
+  }
+}
+
+class _TransferTile extends StatelessWidget {
+  const _TransferTile({required this.entry});
+
+  final _TransferEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final update = entry.update;
+    final state = update?.status ?? DownloadStatus.queued;
+    final fileName =
+        entry.request.fileName ?? entry.request.url.pathSegments.last;
+    final ranges = update?.ranges ?? const <DownloadRangeUpdate>[];
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AdaptiveProgressBar(
-              ranges: _update?.ranges ?? const <DownloadRangeUpdate>[],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    fileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                _StatusLabel(status: state),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(_status, textAlign: TextAlign.center),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isDownloading ? null : _startDownload,
-              child: const Text('Start Download'),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _isDownloading ? _cancel : null,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Cancel Download'),
+            const SizedBox(height: 8),
+            AdaptiveProgressBar(ranges: ranges),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${update?.receivedBytes ?? 0} bytes'
+                    '${update?.totalBytes == null ? '' : ' / ${update!.totalBytes}'}'
+                    '${ranges.length > 1 ? ' · ${ranges.length} parts' : ''}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                if (state == DownloadStatus.downloading ||
+                    state == DownloadStatus.preparing ||
+                    state == DownloadStatus.retrying)
+                  TextButton(
+                    onPressed: () => unawaited(entry.task.cancel()),
+                    child: const Text('Cancel'),
+                  ),
+              ],
             ),
           ],
         ),
       ),
     );
   }
+}
+
+class _StatusLabel extends StatelessWidget {
+  const _StatusLabel({required this.status});
+
+  final DownloadStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      DownloadStatus.completed => Colors.green,
+      DownloadStatus.failed => Theme.of(context).colorScheme.error,
+      DownloadStatus.retrying => Colors.orange,
+      DownloadStatus.cancelled => Colors.grey,
+      _ => Theme.of(context).colorScheme.primary,
+    };
+    return Text(
+      status.name,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
+    );
+  }
+}
+
+class _PresetsView extends StatelessWidget {
+  const _PresetsView({required this.onStart});
+
+  final void Function(DownloadRequest request) onStart;
+
+  static final List<_Preset> _presets = <_Preset>[
+    _Preset(
+      name: 'Multipart fixture',
+      description:
+          'Use a large Range-enabled file to inspect segmented progress.',
+      url: Uri.parse('https://speed.hetzner.de/100MB.bin'),
+      fileName: 'multipart-fixture.bin',
+    ),
+    _Preset(
+      name: 'Single-stream fixture',
+      description: 'Use a small file or a server without Range support.',
+      url: Uri.parse('https://speed.hetzner.de/1MB.bin'),
+      fileName: 'single-fixture.bin',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: _presets.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final preset = _presets[index];
+        return ListTile(
+          tileColor: Theme.of(context).colorScheme.surfaceContainerLow,
+          title: Text(preset.name),
+          subtitle: Text(preset.description),
+          trailing: FilledButton(
+            onPressed:
+                () => onStart(
+                  DownloadRequest(url: preset.url, fileName: preset.fileName),
+                ),
+            child: const Text('Start'),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ConfigurationView extends StatelessWidget {
+  const _ConfigurationView({required this.configuration});
+
+  final DownloadConfiguration configuration;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Manager limits', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        ListTile(
+          title: const Text('Active files'),
+          trailing: Text('${configuration.maxConcurrentDownloads}'),
+        ),
+        ListTile(
+          title: const Text('Global connections'),
+          trailing: Text('${configuration.maxConcurrentConnections}'),
+        ),
+        ListTile(
+          title: const Text('Connections per file'),
+          trailing: Text('${configuration.maxConnectionsPerDownload}'),
+        ),
+        ListTile(
+          title: const Text('Minimum part size'),
+          trailing: Text(
+            '${configuration.minimumBytesPerPart ~/ (1024 * 1024)} MB',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TransferEntry {
+  _TransferEntry({required this.request, required this.task});
+
+  final DownloadRequest request;
+  final DownloadTask task;
+  DownloadUpdate? update;
+}
+
+class _Preset {
+  const _Preset({
+    required this.name,
+    required this.description,
+    required this.url,
+    required this.fileName,
+  });
+
+  final String name;
+  final String description;
+  final Uri url;
+  final String fileName;
 }
