@@ -34,26 +34,32 @@ void main() {
     await temporaryDirectory.delete(recursive: true);
   });
 
-  test('single stream emits terminal updates and atomically returns the file',
-      () async {
-    final task = coordinator.start(
-      DownloadRequest(url: server.uri, fileName: 'fixture.bin'),
-    );
-    final updates = task.updates.toList();
+  test(
+    'single stream emits terminal updates and atomically returns the file',
+    () async {
+      final task = coordinator.start(
+        DownloadRequest(url: server.uri, fileName: 'fixture.bin'),
+      );
+      final updates = task.updates.toList();
 
-    final file = await task.result;
+      final file = await task.result;
 
-    expect(await file.readAsBytes(), fixtureBytes);
-    expect(
-      (await updates).map((update) => update.status),
-      containsAllInOrder([
-        DownloadStatus.preparing,
-        DownloadStatus.downloading,
-        DownloadStatus.completed,
-      ]),
-    );
-    expect(await File('${temporaryDirectory.path}/fixture.bin').exists(), isTrue);
-  });
+      expect(await file.readAsBytes(), fixtureBytes);
+      expect((await updates).last.ranges, hasLength(1));
+      expect(
+        (await updates).map((update) => update.status),
+        containsAllInOrder([
+          DownloadStatus.preparing,
+          DownloadStatus.downloading,
+          DownloadStatus.completed,
+        ]),
+      );
+      expect(
+        await File('${temporaryDirectory.path}/fixture.bin').exists(),
+        isTrue,
+      );
+    },
+  );
 
   test('cancelling a task reaches a cancelled terminal state', () async {
     await server.close();

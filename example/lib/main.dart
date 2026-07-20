@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:resumable_downloader/resumable_downloader.dart';
 
+import 'widgets/adaptive_progress_bar.dart';
+
 void main() {
   runApp(const MainApp());
 }
@@ -102,7 +104,9 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            LinearProgressIndicator(value: _update?.progress),
+            AdaptiveProgressBar(
+              ranges: _update?.ranges ?? const <DownloadRangeUpdate>[],
+            ),
             const SizedBox(height: 16),
             Text(_status, textAlign: TextAlign.center),
             const SizedBox(height: 24),

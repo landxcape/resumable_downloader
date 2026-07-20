@@ -14,8 +14,9 @@ import '../support/range_test_server.dart';
 void main() {
   test('eligible files assemble four verified ranges', () async {
     final bytes = List<int>.generate(64, (index) => index);
-    final temporaryDirectory =
-        await Directory.systemTemp.createTemp('rd-v2-multipart-');
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'rd-v2-multipart-',
+    );
     final server = await RangeTestServer.start(bytes: bytes);
     addTearDown(server.close);
     addTearDown(() => temporaryDirectory.delete(recursive: true));
@@ -45,5 +46,7 @@ void main() {
 
     expect(await file.readAsBytes(), bytes);
     expect(completed.completedRanges, 4);
+    expect(completed.ranges, hasLength(4));
+    expect(completed.ranges.map((range) => range.progress), everyElement(1.0));
   });
 }

@@ -6,6 +6,7 @@ import '../download_request.dart';
 import '../download_task.dart';
 import '../scheduling/transfer_scheduler.dart';
 import '../status/download_status.dart';
+import '../status/download_range_update.dart';
 import '../status/download_update.dart';
 import '../storage/file_transfer_storage.dart';
 import '../support/download_exception.dart';
@@ -42,11 +43,11 @@ class TransferCoordinator {
     required TransferProbe probe,
     required DownloadConfiguration configuration,
     required TransferScheduler scheduler,
-  })  : _storage = storage,
-        _transport = transport,
-        _probe = probe,
-        _configuration = configuration,
-        _scheduler = scheduler;
+  }) : _storage = storage,
+       _transport = transport,
+       _probe = probe,
+       _configuration = configuration,
+       _scheduler = scheduler;
 
   final FileTransferStorage _storage;
   final TransferHttpClient _transport;
@@ -80,38 +81,88 @@ class TransferCoordinator {
         ),
       );
       final probeLease = await _scheduler.acquire(controller.task.id);
-      final probeResult = await (() async {
-        try {
-          return await _probe.probe(
-            request.url,
-            headers: request.headers,
-            cancellation: cancellation,
-          );
-        } finally {
-          await probeLease.release();
-        }
-      })();
+      final probeResult =
+          await (() async {
+            try {
+              return await _probe.probe(
+                request.url,
+                headers: request.headers,
+                cancellation: cancellation,
+              );
+            } finally {
+              await probeLease.release();
+            }
+          })();
       final totalBytes = probeResult.totalBytes;
       if (totalBytes == null) {
         throw StateError('V2 single-stream transfers require a content length');
       }
 
       final key = TransferKey(controller.task.id.replaceAll('-', '_'));
-      final partial = await _storage.createPartialFile(key, totalBytes: totalBytes);
+      final partial = await _storage.createPartialFile(
+        key,
+        totalBytes: totalBytes,
+      );
       final plan = TransferPlan.create(
         totalBytes: totalBytes,
         probe: probeResult,
         configuration: _configuration,
       );
-      controller.emit(
-        DownloadUpdate(
-          taskId: controller.task.id,
-          status: DownloadStatus.downloading,
-          receivedBytes: 0,
-          totalBytes: totalBytes,
-          activeRanges: plan.ranges.length,
-        ),
-      );
+      final receivedByRange = <ByteRange, int>{
+        for (final range in plan.ranges) range: 0,
+      };
+      final statusByRange = <ByteRange, DownloadStatus>{
+        for (final range in plan.ranges) range: DownloadStatus.downloading,
+      };
+      DateTime? lastProgressEmission;
+
+      void emitProgress({
+        bool force = false,
+        DownloadStatus taskStatus = DownloadStatus.downloading,
+        String? outputPath,
+      }) {
+        final now = DateTime.now();
+        if (!force &&
+            lastProgressEmission != null &&
+            now.difference(lastProgressEmission!) <
+                const Duration(milliseconds: 100)) {
+          return;
+        }
+        lastProgressEmission = now;
+        final ranges = plan.ranges
+            .map(
+              (range) => DownloadRangeUpdate(
+                startByte: range.start,
+                endByte: range.end,
+                receivedBytes: receivedByRange[range]!,
+                status: statusByRange[range]!,
+              ),
+            )
+            .toList(growable: false);
+        controller.emit(
+          DownloadUpdate(
+            taskId: controller.task.id,
+            status: taskStatus,
+            receivedBytes: receivedByRange.values.fold(
+              0,
+              (sum, value) => sum + value,
+            ),
+            totalBytes: totalBytes,
+            activeRanges:
+                statusByRange.values
+                    .where((status) => status == DownloadStatus.downloading)
+                    .length,
+            completedRanges:
+                statusByRange.values
+                    .where((status) => status == DownloadStatus.completed)
+                    .length,
+            outputPath: outputPath,
+            ranges: ranges,
+          ),
+        );
+      }
+
+      emitProgress(force: true);
       if (plan.isMultipart) {
         final worker = RangeWorker(
           scheduler: _scheduler,
@@ -128,6 +179,15 @@ class TransferCoordinator {
               totalBytes: totalBytes,
               headers: request.headers,
               cancellation: cancellation,
+              onProgress: (receivedBytes) {
+                receivedByRange[range] = receivedBytes;
+                emitProgress();
+              },
+              onComplete: () {
+                receivedByRange[range] = range.length;
+                statusByRange[range] = DownloadStatus.completed;
+                emitProgress(force: true);
+              },
             ),
           ),
         );
@@ -143,13 +203,24 @@ class TransferCoordinator {
             throw const DownloadCancelledException();
           }
           if (response.statusCode != HttpStatus.ok) {
-            throw HttpException('Unexpected download status ${response.statusCode}');
+            throw HttpException(
+              'Unexpected download status ${response.statusCode}',
+            );
           }
           await _storage.writeRange(
             partial,
             ByteRange(0, totalBytes - 1),
             response.body,
+            onProgress: (receivedBytes) {
+              final range = plan.ranges.single;
+              receivedByRange[range] = receivedBytes;
+              emitProgress();
+            },
           );
+          final range = plan.ranges.single;
+          receivedByRange[range] = range.length;
+          statusByRange[range] = DownloadStatus.completed;
+          emitProgress(force: true);
         } finally {
           await lease.release();
         }
@@ -158,23 +229,20 @@ class TransferCoordinator {
         partial,
         fileName: _fileNameFor(request),
       );
-      controller.emit(
-        DownloadUpdate(
-          taskId: controller.task.id,
-          status: DownloadStatus.completed,
-          receivedBytes: totalBytes,
-          totalBytes: totalBytes,
-          completedRanges: plan.ranges.length,
-          outputPath: output.path,
-        ),
+      emitProgress(
+        force: true,
+        taskStatus: DownloadStatus.completed,
+        outputPath: output.path,
       );
       controller.complete(output);
     } catch (error, stackTrace) {
-      final isCancelled = cancellation.isCancelled || error is DownloadCancelledException;
+      final isCancelled =
+          cancellation.isCancelled || error is DownloadCancelledException;
       controller.emit(
         DownloadUpdate(
           taskId: controller.task.id,
-          status: isCancelled ? DownloadStatus.cancelled : DownloadStatus.failed,
+          status:
+              isCancelled ? DownloadStatus.cancelled : DownloadStatus.failed,
           receivedBytes: 0,
           error: isCancelled ? const DownloadCancelledException() : error,
         ),
@@ -196,6 +264,8 @@ class TransferCoordinator {
       return supplied;
     }
     final segments = request.url.pathSegments;
-    return segments.isEmpty || segments.last.isEmpty ? 'download.bin' : segments.last;
+    return segments.isEmpty || segments.last.isEmpty
+        ? 'download.bin'
+        : segments.last;
   }
 }

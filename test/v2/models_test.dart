@@ -24,7 +24,7 @@ void main() {
 
   group('DownloadUpdate', () {
     test('reports unknown progress as null', () {
-      const update = DownloadUpdate(
+      final update = DownloadUpdate(
         taskId: 'task',
         status: DownloadStatus.downloading,
         receivedBytes: 12,
@@ -34,7 +34,7 @@ void main() {
     });
 
     test('calculates known progress', () {
-      const update = DownloadUpdate(
+      final update = DownloadUpdate(
         taskId: 'task',
         status: DownloadStatus.downloading,
         receivedBytes: 12,

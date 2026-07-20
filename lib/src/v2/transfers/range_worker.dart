@@ -12,9 +12,9 @@ class RangeWorker {
     required TransferScheduler scheduler,
     required TransferHttpClient transport,
     required FileTransferStorage storage,
-  })  : _scheduler = scheduler,
-        _transport = transport,
-        _storage = storage;
+  }) : _scheduler = scheduler,
+       _transport = transport,
+       _storage = storage;
 
   final TransferScheduler _scheduler;
   final TransferHttpClient _transport;
@@ -28,6 +28,8 @@ class RangeWorker {
     required int totalBytes,
     Map<String, String> headers = const <String, String>{},
     TransferCancellation? cancellation,
+    void Function(int receivedBytes)? onProgress,
+    void Function()? onComplete,
   }) async {
     final lease = await _scheduler.acquire(transferId);
     try {
@@ -43,7 +45,13 @@ class RangeWorker {
           !_matchesRange(response.header('content-range'), range, totalBytes)) {
         throw HttpException('Server did not honor the requested byte range');
       }
-      await _storage.writeRange(partial, range, response.body);
+      await _storage.writeRange(
+        partial,
+        range,
+        response.body,
+        onProgress: onProgress,
+      );
+      onComplete?.call();
     } finally {
       await lease.release();
     }

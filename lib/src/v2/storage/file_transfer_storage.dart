@@ -34,8 +34,9 @@ class FileTransferStorage {
   Future<void> writeRange(
     File partial,
     ByteRange range,
-    Stream<List<int>> source,
-  ) async {
+    Stream<List<int>> source, {
+    void Function(int receivedBytes)? onProgress,
+  }) async {
     final handle = await partial.open(mode: FileMode.writeOnly);
     var written = 0;
     try {
@@ -46,9 +47,12 @@ class FileTransferStorage {
           throw StateError('Range worker exceeded its assigned byte range');
         }
         await handle.writeFrom(chunk);
+        onProgress?.call(written);
       }
       if (written != range.length) {
-        throw StateError('Range worker did not complete its assigned byte range');
+        throw StateError(
+          'Range worker did not complete its assigned byte range',
+        );
       }
     } finally {
       await handle.close();

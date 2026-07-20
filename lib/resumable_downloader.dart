@@ -4,4 +4,5 @@ export './src/v2/download_request.dart'
     show DownloadRequest, ExistingFilePolicy;
 export './src/v2/download_task.dart' show DownloadTask;
 export './src/v2/status/download_status.dart' show DownloadStatus;
+export './src/v2/status/download_range_update.dart' show DownloadRangeUpdate;
 export './src/v2/status/download_update.dart' show DownloadUpdate;

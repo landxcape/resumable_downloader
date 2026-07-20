@@ -1,8 +1,9 @@
 import 'download_status.dart';
+import 'download_range_update.dart';
 
 /// A snapshot of a V2 download task's lifecycle and aggregate transfer progress.
 class DownloadUpdate {
-  const DownloadUpdate({
+  DownloadUpdate({
     required this.taskId,
     required this.status,
     required this.receivedBytes,
@@ -12,11 +13,13 @@ class DownloadUpdate {
     this.retryAttempt = 0,
     this.outputPath,
     this.error,
-  })  : assert(receivedBytes >= 0),
-        assert(totalBytes == null || totalBytes >= 0),
-        assert(activeRanges >= 0),
-        assert(completedRanges >= 0),
-        assert(retryAttempt >= 0);
+    List<DownloadRangeUpdate> ranges = const <DownloadRangeUpdate>[],
+  }) : ranges = List.unmodifiable(ranges),
+       assert(receivedBytes >= 0),
+       assert(totalBytes == null || totalBytes >= 0),
+       assert(activeRanges >= 0),
+       assert(completedRanges >= 0),
+       assert(retryAttempt >= 0);
 
   final String taskId;
   final DownloadStatus status;
@@ -27,6 +30,7 @@ class DownloadUpdate {
   final int retryAttempt;
   final String? outputPath;
   final Object? error;
+  final List<DownloadRangeUpdate> ranges;
 
   /// Returns null when the server did not provide a usable total byte count.
   double? get progress {
