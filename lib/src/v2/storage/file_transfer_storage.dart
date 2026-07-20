@@ -54,4 +54,15 @@ class FileTransferStorage {
       await handle.close();
     }
   }
+
+  Future<File> finalize(File partial, {required String fileName}) async {
+    if (fileName.isEmpty || fileName.contains('/') || fileName.contains('\\')) {
+      throw ArgumentError.value(fileName, 'fileName', 'must be a file name');
+    }
+    final output = File('${_baseDirectory.path}/$fileName');
+    if (await output.exists()) {
+      throw StateError('Output file already exists: ${output.path}');
+    }
+    return partial.rename(output.path);
+  }
 }
