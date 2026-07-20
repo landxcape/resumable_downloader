@@ -1,7 +1,7 @@
-export './src/legacy/constants/enums.dart' show LogLevel, FileExistsStrategy;
-export './src/legacy/constants/typedefs.dart' show LogCallback;
-export './src/legacy/download_manager.dart' show DownloadManager;
-export './src/legacy/models/download_progress.dart'
-    show DownloadProgress, DownloadProgressExtension;
-export './src/legacy/models/log_record.dart' show LogRecord;
-export './src/legacy/models/queue_item.dart' show QueueItem;
+export './src/v2/download_configuration.dart' show DownloadConfiguration;
+export './src/v2/download_manager.dart' show DownloadManager;
+export './src/v2/download_request.dart'
+    show DownloadRequest, ExistingFilePolicy;
+export './src/v2/download_task.dart' show DownloadTask;
+export './src/v2/status/download_status.dart' show DownloadStatus;
+export './src/v2/status/download_update.dart' show DownloadUpdate;

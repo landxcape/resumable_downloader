@@ -53,9 +53,9 @@ class TransferCoordinator {
   final TransferScheduler _scheduler;
   var _nextTaskId = 0;
 
-  DownloadTask start(DownloadRequest request) {
-    final taskId = 'task-${++_nextTaskId}';
-    final controller = DownloadTaskController(taskId);
+  DownloadTask start(DownloadRequest request, {String? taskId}) {
+    final resolvedTaskId = taskId ?? 'task-${++_nextTaskId}';
+    final controller = DownloadTaskController(resolvedTaskId);
     unawaited(Future<void>.microtask(() => _run(controller, request)));
     return controller.task;
   }
