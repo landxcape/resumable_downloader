@@ -5,7 +5,9 @@ import 'dart:io' show File;
 
 import 'package:dio/dio.dart' show CancelToken;
 
-import '../../resumable_downloader.dart';
+import '../constants/enums.dart';
+import 'download_progress.dart';
+import 'queue_item.dart';
 
 /// Represents an individual download operation managed internally by [DownloadManager].
 ///
