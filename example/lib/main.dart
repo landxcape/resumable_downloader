@@ -66,71 +66,12 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
     unawaited(task.result.then<void>((_) {}, onError: (_, _) {}));
   }
 
-  Future<void> _showAddSheet() async {
-    final urlController = TextEditingController();
-    final fileNameController = TextEditingController();
-    await showModalBottomSheet<void>(
+  Future<void> _showAddSheet() {
+    return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder:
-          (context) => Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              20 + MediaQuery.viewInsetsOf(context).bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Add download',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: urlController,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Download URL',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: fileNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'File name',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () {
-                    final url = Uri.tryParse(urlController.text.trim());
-                    if (url == null || !url.hasScheme) {
-                      return;
-                    }
-                    _startRequest(
-                      DownloadRequest(
-                        url: url,
-                        fileName:
-                            fileNameController.text.trim().isEmpty
-                                ? null
-                                : fileNameController.text.trim(),
-                      ),
-                    );
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Queue download'),
-                ),
-              ],
-            ),
-          ),
+      builder: (_) => _AddDownloadSheet(onQueue: _startRequest),
     );
-    urlController.dispose();
-    fileNameController.dispose();
   }
 
   @override
@@ -182,6 +123,96 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
             label: 'Configuration',
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AddDownloadSheet extends StatefulWidget {
+  const _AddDownloadSheet({required this.onQueue});
+
+  final void Function(DownloadRequest request) onQueue;
+
+  @override
+  State<_AddDownloadSheet> createState() => _AddDownloadSheetState();
+}
+
+class _AddDownloadSheetState extends State<_AddDownloadSheet> {
+  final _urlController = TextEditingController();
+  final _fileNameController = TextEditingController();
+  String? _urlError;
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _fileNameController.dispose();
+    super.dispose();
+  }
+
+  void _queue() {
+    final url = Uri.tryParse(_urlController.text.trim());
+    if (url == null || !url.hasScheme) {
+      setState(() => _urlError = 'Enter a valid URL with a scheme.');
+      return;
+    }
+    widget.onQueue(
+      DownloadRequest(
+        url: url,
+        fileName:
+            _fileNameController.text.trim().isEmpty
+                ? null
+                : _fileNameController.text.trim(),
+      ),
+    );
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          20 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Add download', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _urlController,
+              keyboardType: TextInputType.url,
+              onChanged: (_) {
+                if (_urlError != null) {
+                  setState(() => _urlError = null);
+                }
+              },
+              decoration: InputDecoration(
+                labelText: 'Download URL',
+                errorText: _urlError,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _fileNameController,
+              decoration: const InputDecoration(
+                labelText: 'File name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _queue,
+              child: const Text('Queue download'),
+            ),
+          ],
+        ),
       ),
     );
   }

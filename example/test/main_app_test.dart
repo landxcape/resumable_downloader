@@ -1,4 +1,5 @@
 import 'package:example/main.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -15,5 +16,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Multipart fixture'), findsOneWidget);
+  });
+
+  testWidgets('queues a URL without using disposed sheet controllers', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MainApp());
+
+    await tester.tap(find.text('Add URL'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Download URL'),
+      'https://example.com/archive.bin',
+    );
+    await tester.tap(find.text('Queue download'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('archive.bin'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
