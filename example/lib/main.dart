@@ -381,13 +381,13 @@ class _PresetsView extends StatelessWidget {
       name: 'Multipart fixture',
       description:
           'Use a large Range-enabled file to inspect segmented progress.',
-      url: Uri.parse('https://speed.hetzner.de/100MB.bin'),
+      url: Uri.parse('https://proof.ovh.net/files/100Mb.dat'),
       fileName: 'multipart-fixture.bin',
     ),
     _Preset(
       name: 'Single-stream fixture',
       description: 'Use a small file or a server without Range support.',
-      url: Uri.parse('https://speed.hetzner.de/1MB.bin'),
+      url: Uri.parse('https://proof.ovh.net/files/1Mb.dat'),
       fileName: 'single-fixture.bin',
     ),
   ];
