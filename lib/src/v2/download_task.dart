@@ -26,6 +26,10 @@ class DownloadTaskController {
 
   final DownloadTask task;
 
+  void setCancelHandler(Future<void> Function() handler) {
+    task._cancel = handler;
+  }
+
   void emit(DownloadUpdate update) {
     if (!task._updates.isClosed) {
       task._updates.add(update);

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/src/v2/download_request.dart';
+import 'package:resumable_downloader/src/v2/support/download_exception.dart';
 import 'package:resumable_downloader/src/v2/storage/file_transfer_storage.dart';
 import 'package:resumable_downloader/src/v2/status/download_status.dart';
 import 'package:resumable_downloader/src/v2/transport/dio_transfer_http_client.dart';
@@ -52,5 +53,23 @@ void main() {
       ]),
     );
     expect(await File('${temporaryDirectory.path}/fixture.bin').exists(), isTrue);
+  });
+
+  test('cancelling a task reaches a cancelled terminal state', () async {
+    await server.close();
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      responseDelay: const Duration(milliseconds: 100),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'cancelled.bin'),
+    );
+    final updates = task.updates.toList();
+
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await task.cancel();
+
+    await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
+    expect((await updates).last.status, DownloadStatus.cancelled);
   });
 }

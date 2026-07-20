@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/resumable_downloader.dart';
+import 'package:resumable_downloader/src/v2/support/download_exception.dart';
 
 import '../support/range_test_server.dart';
 
@@ -57,6 +58,28 @@ void main() {
     await Future.wait(<Future<File>>[first.result, second.result]);
 
     expect(server.maxConcurrentRequests, 1);
+    await manager.dispose();
+  });
+
+  test('manager forwards task cancellation to the active transfer', () async {
+    final temporaryDirectory =
+        await Directory.systemTemp.createTemp('rd-v2-manager-cancel-');
+    final server = await RangeTestServer.start(
+      bytes: List<int>.generate(32, (index) => index),
+      responseDelay: const Duration(milliseconds: 100),
+    );
+    addTearDown(server.close);
+    addTearDown(() => temporaryDirectory.delete(recursive: true));
+
+    final manager = DownloadManager(baseDirectory: temporaryDirectory);
+    final task = manager.enqueue(
+      DownloadRequest(url: server.uri, fileName: 'cancelled.bin'),
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await task.cancel();
+
+    await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
     await manager.dispose();
   });
 }

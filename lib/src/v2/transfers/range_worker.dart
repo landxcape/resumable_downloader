@@ -3,6 +3,7 @@ import 'dart:io';
 import '../scheduling/transfer_scheduler.dart';
 import '../storage/file_transfer_storage.dart';
 import '../transport/transfer_http_client.dart';
+import '../transport/transfer_cancellation.dart';
 import 'byte_range.dart';
 
 /// Downloads and validates one assigned HTTP byte range.
@@ -26,6 +27,7 @@ class RangeWorker {
     required ByteRange range,
     required int totalBytes,
     Map<String, String> headers = const <String, String>{},
+    TransferCancellation? cancellation,
   }) async {
     final lease = await _scheduler.acquire(transferId);
     try {
@@ -35,6 +37,7 @@ class RangeWorker {
           ...headers,
           'Range': 'bytes=${range.start}-${range.end}',
         },
+        cancellation: cancellation,
       );
       if (response.statusCode != HttpStatus.partialContent ||
           !_matchesRange(response.header('content-range'), range, totalBytes)) {

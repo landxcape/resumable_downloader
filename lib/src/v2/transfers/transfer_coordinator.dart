@@ -8,6 +8,8 @@ import '../scheduling/transfer_scheduler.dart';
 import '../status/download_status.dart';
 import '../status/download_update.dart';
 import '../storage/file_transfer_storage.dart';
+import '../support/download_exception.dart';
+import '../transport/transfer_cancellation.dart';
 import '../transport/transfer_http_client.dart';
 import '../transport/transfer_probe.dart';
 import 'byte_range.dart';
@@ -65,6 +67,8 @@ class TransferCoordinator {
     DownloadRequest request,
   ) async {
     var registeredWithScheduler = false;
+    final cancellation = TransferCancellation();
+    controller.setCancelHandler(() async => cancellation.cancel());
     try {
       _scheduler.enqueue(controller.task.id);
       registeredWithScheduler = true;
@@ -78,7 +82,11 @@ class TransferCoordinator {
       final probeLease = await _scheduler.acquire(controller.task.id);
       final probeResult = await (() async {
         try {
-          return await _probe.probe(request.url, headers: request.headers);
+          return await _probe.probe(
+            request.url,
+            headers: request.headers,
+            cancellation: cancellation,
+          );
         } finally {
           await probeLease.release();
         }
@@ -119,14 +127,21 @@ class TransferCoordinator {
               range: range,
               totalBytes: totalBytes,
               headers: request.headers,
+              cancellation: cancellation,
             ),
           ),
         );
       } else {
         final lease = await _scheduler.acquire(controller.task.id);
         try {
-          final response =
-              await _transport.get(request.url, headers: request.headers);
+          final response = await _transport.get(
+            request.url,
+            headers: request.headers,
+            cancellation: cancellation,
+          );
+          if (cancellation.isCancelled) {
+            throw const DownloadCancelledException();
+          }
           if (response.statusCode != HttpStatus.ok) {
             throw HttpException('Unexpected download status ${response.statusCode}');
           }
@@ -155,15 +170,19 @@ class TransferCoordinator {
       );
       controller.complete(output);
     } catch (error, stackTrace) {
+      final isCancelled = cancellation.isCancelled || error is DownloadCancelledException;
       controller.emit(
         DownloadUpdate(
           taskId: controller.task.id,
-          status: DownloadStatus.failed,
+          status: isCancelled ? DownloadStatus.cancelled : DownloadStatus.failed,
           receivedBytes: 0,
-          error: error,
+          error: isCancelled ? const DownloadCancelledException() : error,
         ),
       );
-      controller.fail(error, stackTrace);
+      controller.fail(
+        isCancelled ? const DownloadCancelledException() : error,
+        stackTrace,
+      );
     } finally {
       if (registeredWithScheduler) {
         _scheduler.complete(controller.task.id);

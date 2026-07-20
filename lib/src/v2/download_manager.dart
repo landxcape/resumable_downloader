@@ -63,6 +63,12 @@ class DownloadManager {
     DownloadRequest request,
   ) async {
     StreamSubscription<DownloadUpdate>? subscription;
+    DownloadTask? innerTask;
+    var cancelRequested = false;
+    controller.setCancelHandler(() async {
+      cancelRequested = true;
+      await innerTask?.cancel();
+    });
     try {
       final directory = await _resolveDirectory(request);
       final coordinator = TransferCoordinator(
@@ -72,13 +78,16 @@ class DownloadManager {
         configuration: configuration,
         scheduler: _scheduler,
       );
-      final innerTask = coordinator.start(request, taskId: controller.task.id);
+      innerTask = coordinator.start(request, taskId: controller.task.id);
       subscription = innerTask.updates.listen((update) {
         controller.emit(update);
         if (!_updates.isClosed) {
           _updates.add(update);
         }
       });
+      if (cancelRequested) {
+        await innerTask.cancel();
+      }
       final file = await innerTask.result;
       controller.complete(file);
     } catch (error, stackTrace) {

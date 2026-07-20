@@ -1,4 +1,5 @@
 import 'transfer_http_client.dart';
+import 'transfer_cancellation.dart';
 
 /// Metadata verified before selecting a V2 transfer plan.
 class TransferProbeResult {
@@ -24,8 +25,13 @@ class TransferProbe {
   Future<TransferProbeResult> probe(
     Uri url, {
     Map<String, String> headers = const <String, String>{},
+    TransferCancellation? cancellation,
   }) async {
-    final head = await _client.head(url, headers: headers);
+    final head = await _client.head(
+      url,
+      headers: headers,
+      cancellation: cancellation,
+    );
     await head.body.drain<void>();
 
     final headLength = _parsePositiveInt(head.header('content-length'));
@@ -34,6 +40,7 @@ class TransferProbe {
     final rangeResponse = await _client.get(
       url,
       headers: <String, String>{...headers, 'Range': 'bytes=0-0'},
+      cancellation: cancellation,
     );
     await rangeResponse.body.drain<void>();
 
