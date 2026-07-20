@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:resumable_downloader/resumable_downloader.dart';
 
 void main() {
@@ -23,33 +24,22 @@ class DownloadHomePage extends StatefulWidget {
 }
 
 class _DownloadHomePageState extends State<DownloadHomePage> {
-  late final DownloadManager _downloadManager;
+  late final DownloadManager _downloadManager = DownloadManager(
+    subdirectory: 'downloads',
+    configuration: DownloadConfiguration(
+      maxConcurrentDownloads: 2,
+      maxConcurrentConnections: 4,
+      maxConnectionsPerDownload: 3,
+      maxRetries: 2,
+    ),
+  );
 
   final String downloadUrl =
       'https://archive.org/download/tomandjerry_1080p/S1940E01%20-%20Puss%20Gets%20The%20Boot%20%281080p%20BluRay%20x265%20Ghost%29.mp4';
-  DownloadProgress _progress = DownloadProgress(receivedByte: 0, totalByte: 1);
+  DownloadUpdate? _update;
+  DownloadTask? _task;
   bool _isDownloading = false;
   String _status = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeDownloader();
-  }
-
-  Future<void> _initializeDownloader() async {
-    final baseDir = await getApplicationDocumentsDirectory();
-
-    _downloadManager = DownloadManager(
-      subDir: 'downloads',
-      baseDirectory: baseDir,
-      fileExistsStrategy: FileExistsStrategy.resume,
-      maxConcurrentDownloads: 2,
-      maxRetries: 2,
-      delayBetweenRetries: Duration.zero,
-      logger: (log) => debugPrint('[${log.level.name}] ${log.message}'),
-    );
-  }
 
   Future<void> _startDownload() async {
     setState(() {
@@ -58,22 +48,26 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     });
 
     try {
-      final file = await _downloadManager.getFile(
-        QueueItem(
-          url: downloadUrl,
-          fileName: 'download_file.mp4', // optional
-          progressCallback: (progress) {
-            setState(() {
-              _progress = progress;
-              _status =
-                  'Downloading... ${progress.getProgressPercent()}% (${progress.getReceivedMB()}/${progress.getTotalMB()}MB)';
-            });
-          },
+      final task = _downloadManager.enqueue(
+        DownloadRequest(
+          url: Uri.parse(downloadUrl),
+          fileName: 'download_file.mp4',
         ),
       );
+      _task = task;
+      task.updates.listen((update) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _update = update;
+          _status = '${update.status.name}: ${update.receivedBytes} bytes';
+        });
+      });
+      final file = await task.result;
 
       setState(() {
-        _status = 'Download complete: ${file?.path}';
+        _status = 'Download complete: ${file.path}';
       });
     } catch (e) {
       setState(() {
@@ -86,32 +80,16 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     }
   }
 
-  void _cancelAll() {
-    _downloadManager.cancelAll();
+  void _cancel() {
+    unawaited(_task?.cancel() ?? Future<void>.value());
     setState(() {
-      _status = 'All downloads canceled';
-      _progress = DownloadProgress(receivedByte: 0, totalByte: 1);
-      _isDownloading = false;
-    });
-  }
-
-  void _deleteFile() {
-    _downloadManager.deleteContentFile(
-      QueueItem(
-        url: downloadUrl,
-        fileName: 'download_file', // optional
-      ),
-    );
-    setState(() {
-      _status = 'File deleted.';
-      _progress = DownloadProgress(receivedByte: 0, totalByte: 1);
-      _isDownloading = false;
+      _status = 'Cancelling download...';
     });
   }
 
   @override
   void dispose() {
-    _downloadManager.dispose();
+    unawaited(_downloadManager.dispose());
     super.dispose();
   }
 
@@ -124,7 +102,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            LinearProgressIndicator(value: _progress.progress),
+            LinearProgressIndicator(value: _update?.progress),
             const SizedBox(height: 16),
             Text(_status, textAlign: TextAlign.center),
             const SizedBox(height: 24),
@@ -134,15 +112,9 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             ),
             const SizedBox(height: 12),
             ElevatedButton(
-              onPressed: _isDownloading ? _cancelAll : null,
+              onPressed: _isDownloading ? _cancel : null,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('Cancel Download'),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _isDownloading ? null : _deleteFile,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Delete File'),
             ),
           ],
         ),
