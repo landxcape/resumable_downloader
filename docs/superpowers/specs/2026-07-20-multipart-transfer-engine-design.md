@@ -6,9 +6,9 @@ Replace the current downloader with a robust, Flutter-first native download API.
 The new API supports fair parallel downloads across files and byte ranges within a
 single eligible file. It is designed for Android, iOS, macOS, Windows, and Linux.
 
-The existing API remains available through a versioned legacy library entry point.
-The new root library is a deliberate API redesign rather than a compatibility
-wrapper around the current implementation.
+The existing API remains available through a separate legacy library entry point.
+The root library is a deliberate API redesign with no compatibility wrapper or
+shared public types from the current implementation.
 
 ## Scope
 
@@ -77,21 +77,23 @@ is immutable once a manager is created.
 `DownloadRequest` contains the source URL, optional filename, optional
 subdirectory, request headers, and file-existence behavior. Per-request multipart
 overrides are deferred; manager configuration is the sole control in this release.
+Its V2 `ExistingFilePolicy` type is independent from the legacy enum.
 
 ## Legacy Surface
 
 The existing implementation is kept intact under `src/legacy/` and is exposed by:
 
 ```dart
-import 'package:resumable_downloader/resumable_downloader_v1.dart' as v1;
+import 'package:resumable_downloader/resumable_downloader_legacy.dart' as legacy;
 
-final manager = v1.DownloadManager(subDir: 'downloads');
+final manager = legacy.DownloadManager(subDir: 'downloads');
 final file = await manager.getFile(url);
 ```
 
 The legacy library is documented as maintenance-only. It receives critical fixes,
-but no new features. The old and new implementations never share live queues,
-cancellation state, partial files, or resume manifests.
+but no new features. Its classes and methods are preserved there exactly; V2 does
+not support, export, or adapt them. The old and new implementations never share
+live queues, cancellation state, partial files, resume manifests, or public models.
 
 ## Internal Architecture
 
@@ -197,8 +199,8 @@ pass before publishing.
 
 ## Migration Direction
 
-Users choose either the new root entry point or the versioned V1 entry point.
-Migration is explicit rather than behavioral: `QueueItem` becomes
+Users choose either the new root entry point or the legacy entry point. Migration
+is explicit rather than behavioral: `QueueItem` becomes
 `DownloadRequest`; `getFile` and progress callbacks become a `DownloadTask` with
 `result` and `updates`; manager-level settings move into
 `DownloadConfiguration`.
