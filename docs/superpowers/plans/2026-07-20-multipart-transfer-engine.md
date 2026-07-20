@@ -25,6 +25,7 @@ lib/
       download_task.dart                       task handle and updates stream
       status/download_status.dart              lifecycle state enum
       status/download_update.dart              lifecycle payload
+      status/download_range_update.dart        immutable per-range progress payload
       scheduling/transfer_scheduler.dart       queue and fair connection leases
       scheduling/connection_lease.dart         release-once global slot handle
       transfers/transfer_key.dart              V2 identity and manifest key
@@ -556,6 +557,56 @@ Expected: both entry points compile independently; V2 never imports legacy code.
 ```bash
 git add lib/resumable_downloader.dart lib/src/v2/download_manager.dart test/v2/download_manager_test.dart
 git commit -m "feat: expose v2 downloader api"
+```
+
+### Task 8a: Expose per-range progress for one adaptive progress bar
+
+**Files:**
+- Create: `lib/src/v2/status/download_range_update.dart`
+- Modify: `lib/src/v2/status/download_update.dart`
+- Modify: `lib/src/v2/transfers/range_worker.dart`
+- Modify: `lib/src/v2/transfers/transfer_coordinator.dart`
+- Modify: `lib/resumable_downloader.dart`
+- Modify: `example/lib/main.dart`
+- Test: `test/v2/multipart_transfer_test.dart`
+
+- [ ] **Step 1: Write failing snapshot tests.**
+
+```dart
+expect(completed.ranges, hasLength(4));
+expect(completed.ranges.map((range) => range.progress), everyElement(1.0));
+```
+
+- [ ] **Step 2: Implement immutable range snapshots.**
+
+`DownloadRangeUpdate` contains `startByte`, `endByte`, `receivedBytes`, and
+`DownloadStatus status`. `DownloadUpdate.ranges` is an immutable list. A known
+single-stream transfer has one range snapshot; a multipart transfer has one
+snapshot for every planned range.
+
+- [ ] **Step 3: Report byte changes from workers and aggregate them.**
+
+`RangeWorker` invokes a received-byte callback after each accepted chunk. The
+coordinator keeps per-range received bytes, emits aggregate/range snapshots no more
+than once per 100 milliseconds, and always emits a final complete snapshot.
+
+- [ ] **Step 4: Render one adaptive progress bar in the example.**
+
+Build a single custom Flutter progress-bar widget. Segment widths are proportional
+to range byte length; each segment fills from its own snapshot progress. A
+single-stream task therefore renders one continuous segment, while multipart tasks
+show subtle dividers inside the same bar.
+
+- [ ] **Step 5: Run focused checks and commit.**
+
+Run: `flutter test test/v2/multipart_transfer_test.dart test/v2/transfer_coordinator_test.dart && flutter analyze example`
+
+Expected: per-range data is exact at completion, the single-stream bar uses one
+segment, the multipart bar uses multiple filled segments, and analysis succeeds.
+
+```bash
+git add lib/src/v2/status lib/src/v2/transfers lib/resumable_downloader.dart example/lib/main.dart test/v2
+git commit -m "feat: expose range-level transfer progress"
 ```
 
 ### Task 9: Publish-readiness documentation and release verification

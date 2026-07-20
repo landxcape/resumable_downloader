@@ -69,6 +69,13 @@ bytes received, total bytes when known, completed and active range counts, retry
 attempt, final path, and error information. The lifecycle states are `queued`,
 `preparing`, `downloading`, `retrying`, `completed`, `failed`, and `cancelled`.
 
+`DownloadUpdate` also includes an immutable list of `DownloadRangeUpdate` values.
+Each range update contains inclusive start and end byte offsets, bytes received,
+and its transfer state. V2 emits one range snapshot for single-stream files and
+one snapshot per planned range for multipart files. Aggregate task progress and
+range snapshots are emitted together at a bounded cadence so user interfaces can
+render actual range activity without deriving it from counts.
+
 `DownloadConfiguration` defaults to three active files, six total connections,
 four connections per eligible file, and an 8 MiB minimum byte range. A file must
 therefore be at least 16 MiB before V2 considers using two ranges. Configuration
@@ -131,7 +138,9 @@ file into non-overlapping ranges no smaller than the configured minimum.
 
 `RangeWorker` owns one HTTP stream, one cancellation token, one independent file
 handle, and its retry loop. It writes only within its assigned offsets. A parent
-task cancellation cancels every active worker.
+task cancellation cancels every active worker. It reports received-byte changes to
+its coordinator, which updates the matching `DownloadRangeUpdate` and aggregate
+task progress.
 
 `TransferStorage` owns file paths, preallocation, independent offset writes,
 finalization, cleanup, and a versioned sidecar manifest. The manifest records a
