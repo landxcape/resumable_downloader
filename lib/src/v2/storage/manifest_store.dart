@@ -13,12 +13,18 @@ class ManifestStore {
   Directory get _directory =>
       Directory('${_baseDirectory.path}/.resumable_downloader_v2');
 
-  File _fileFor(TransferKey key) => File('${_directory.path}/${key.value}.json');
+  File _fileFor(TransferKey key) =>
+      File('${_directory.path}/${key.value}.json');
 
   Future<void> write(TransferManifest manifest) async {
     await _directory.create(recursive: true);
     final file = _fileFor(manifest.key);
-    await file.writeAsString(jsonEncode(manifest.toJson()), flush: true);
+    final temporaryFile = File('${file.path}.tmp');
+    await temporaryFile.writeAsString(
+      jsonEncode(manifest.toJson()),
+      flush: true,
+    );
+    await temporaryFile.rename(file.path);
   }
 
   Future<TransferManifest?> read(TransferKey key) async {

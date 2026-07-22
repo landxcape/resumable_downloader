@@ -13,41 +13,48 @@ void main() {
   late TransferKey key;
 
   setUp(() async {
-    temporaryDirectory = await Directory.systemTemp.createTemp('rd-v2-storage-');
+    temporaryDirectory = await Directory.systemTemp.createTemp(
+      'rd-v2-storage-',
+    );
     storage = FileTransferStorage(temporaryDirectory);
     key = TransferKey('fixture-key');
   });
 
   tearDown(() => temporaryDirectory.delete(recursive: true));
 
-  test('independent handles write non-overlapping ranges into one partial file',
-      () async {
-    final partial = await storage.createPartialFile(key, totalBytes: 6);
+  test(
+    'independent handles write non-overlapping ranges into one partial file',
+    () async {
+      final partial = await storage.createPartialFile(key, totalBytes: 6);
 
-    await Future.wait([
-      storage.writeRange(
-        partial,
-        const ByteRange(0, 2),
-        Stream<List<int>>.value(<int>[0, 1, 2]),
-      ),
-      storage.writeRange(
-        partial,
-        const ByteRange(3, 5),
-        Stream<List<int>>.value(<int>[3, 4, 5]),
-      ),
-    ]);
+      await Future.wait([
+        storage.writeRange(
+          partial,
+          const ByteRange(0, 2),
+          Stream<List<int>>.value(<int>[0, 1, 2]),
+        ),
+        storage.writeRange(
+          partial,
+          const ByteRange(3, 5),
+          Stream<List<int>>.value(<int>[3, 4, 5]),
+        ),
+      ]);
 
-    expect(await partial.readAsBytes(), <int>[0, 1, 2, 3, 4, 5]);
-  });
+      expect(await partial.readAsBytes(), <int>[0, 1, 2, 3, 4, 5]);
+    },
+  );
 
   test('manifest store round trips a completed range map', () async {
     final store = ManifestStore(temporaryDirectory);
     final manifest = TransferManifest(
       key: key,
-      outputPath: '/downloads/fixture.bin',
+      sourceUri: Uri.parse('https://example.test/fixture.bin'),
+      outputFileName: 'fixture.bin',
       totalBytes: 12,
       entityTag: '"fixture"',
-      completedRanges: <ByteRange>[ByteRange(0, 5)],
+      ranges: <TransferRangeCheckpoint>[
+        TransferRangeCheckpoint(range: const ByteRange(0, 5), receivedBytes: 6),
+      ],
     );
 
     await store.write(manifest);
