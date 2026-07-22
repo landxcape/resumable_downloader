@@ -6,6 +6,7 @@ class DownloadConfiguration {
     this.maxConnectionsPerDownload = 4,
     this.minimumBytesPerPart = 8 * 1024 * 1024,
     this.maxRetries = 3,
+    this.retryDelay = const Duration(milliseconds: 250),
   }) {
     if (maxConcurrentDownloads <= 0) {
       throw ArgumentError.value(
@@ -42,6 +43,13 @@ class DownloadConfiguration {
         'must not be negative',
       );
     }
+    if (retryDelay.isNegative) {
+      throw ArgumentError.value(
+        retryDelay,
+        'retryDelay',
+        'must not be negative',
+      );
+    }
   }
 
   final int maxConcurrentDownloads;
@@ -49,4 +57,5 @@ class DownloadConfiguration {
   final int maxConnectionsPerDownload;
   final int minimumBytesPerPart;
   final int maxRetries;
+  final Duration retryDelay;
 }

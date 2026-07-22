@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/src/v2/download_request.dart';
+import 'package:resumable_downloader/src/v2/download_configuration.dart';
 import 'package:resumable_downloader/src/v2/support/download_exception.dart';
 import 'package:resumable_downloader/src/v2/storage/file_transfer_storage.dart';
 import 'package:resumable_downloader/src/v2/status/download_status.dart';
+import 'package:resumable_downloader/src/v2/status/download_update.dart';
 import 'package:resumable_downloader/src/v2/transport/dio_transfer_http_client.dart';
 import 'package:resumable_downloader/src/v2/transport/transfer_probe.dart';
 import 'package:resumable_downloader/src/v2/transfers/transfer_coordinator.dart';
@@ -77,5 +79,111 @@ void main() {
 
     await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
     expect((await updates).last.status, DownloadStatus.cancelled);
+  });
+
+  test('retries a transient probe failure before completing', () async {
+    await server.close();
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      failFirstRequests: 2,
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        maxRetries: 1,
+        retryDelay: Duration.zero,
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'retried.bin'),
+    );
+    final updates = task.updates.toList();
+
+    final file = await task.result;
+
+    expect(await file.readAsBytes(), fixtureBytes);
+    expect(
+      (await updates).map((update) => update.status),
+      contains(DownloadStatus.retrying),
+    );
+    expect(
+      (await updates).where(
+        (update) => update.status == DownloadStatus.retrying,
+      ),
+      everyElement(
+        predicate((DownloadUpdate update) => update.retryAttempt == 1),
+      ),
+    );
+  });
+
+  test('retries a multipart range failure before completing', () async {
+    await server.close();
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      failingRequestNumbers: <int>{3},
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        maxConcurrentDownloads: 1,
+        maxConcurrentConnections: 4,
+        maxConnectionsPerDownload: 4,
+        minimumBytesPerPart: 8,
+        maxRetries: 1,
+        retryDelay: Duration.zero,
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'retried-multipart.bin'),
+    );
+    final updates = task.updates.toList();
+
+    final file = await task.result;
+
+    expect(await file.readAsBytes(), fixtureBytes);
+    expect(
+      (await updates).map((update) => update.status),
+      contains(DownloadStatus.retrying),
+    );
+  });
+
+  test('cancelling during retry backoff does not wait for the delay', () async {
+    await server.close();
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      failFirstRequests: 10,
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        maxRetries: 3,
+        retryDelay: const Duration(seconds: 1),
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'cancel-retry.bin'),
+    );
+    final result = expectLater(
+      task.result,
+      throwsA(isA<DownloadCancelledException>()),
+    );
+
+    await task.updates.firstWhere(
+      (update) => update.status == DownloadStatus.retrying,
+    );
+    final stopwatch = Stopwatch()..start();
+    await task.cancel();
+
+    await result;
+    expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 250)));
   });
 }

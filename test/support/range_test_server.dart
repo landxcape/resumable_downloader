@@ -10,6 +10,8 @@ class RangeTestServer {
     required this.malformedContentRange,
     required this.includeContentLength,
     required this.responseDelay,
+    required this.failFirstRequests,
+    required this.failingRequestNumbers,
   });
 
   final HttpServer _server;
@@ -18,7 +20,10 @@ class RangeTestServer {
   final bool malformedContentRange;
   final bool includeContentLength;
   final Duration responseDelay;
+  final int failFirstRequests;
+  final Set<int> failingRequestNumbers;
   var _activeRequests = 0;
+  var _requestCount = 0;
   var maxConcurrentRequests = 0;
 
   Uri get uri => Uri.parse('http://127.0.0.1:${_server.port}/fixture.bin');
@@ -29,6 +34,8 @@ class RangeTestServer {
     bool malformedContentRange = false,
     bool includeContentLength = true,
     Duration responseDelay = Duration.zero,
+    int failFirstRequests = 0,
+    Set<int> failingRequestNumbers = const <int>{},
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final result = RangeTestServer._(
@@ -38,6 +45,8 @@ class RangeTestServer {
       malformedContentRange: malformedContentRange,
       includeContentLength: includeContentLength,
       responseDelay: responseDelay,
+      failFirstRequests: failFirstRequests,
+      failingRequestNumbers: Set<int>.unmodifiable(failingRequestNumbers),
     );
     server.listen((request) => unawaited(result._handle(request)));
     return result;
@@ -46,11 +55,19 @@ class RangeTestServer {
   Future<void> close() => _server.close(force: true);
 
   Future<void> _handle(HttpRequest request) async {
+    _requestCount++;
     _activeRequests++;
-    maxConcurrentRequests = maxConcurrentRequests < _activeRequests
-        ? _activeRequests
-        : maxConcurrentRequests;
+    maxConcurrentRequests =
+        maxConcurrentRequests < _activeRequests
+            ? _activeRequests
+            : maxConcurrentRequests;
     try {
+      if (_requestCount <= failFirstRequests ||
+          failingRequestNumbers.contains(_requestCount)) {
+        request.response.statusCode = HttpStatus.serviceUnavailable;
+        await request.response.close();
+        return;
+      }
       if (responseDelay > Duration.zero) {
         await Future<void>.delayed(responseDelay);
       }
@@ -65,8 +82,9 @@ class RangeTestServer {
       }
 
       final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
-      final match =
-          RegExp(r'^bytes=(\d+)-(\d+)$').firstMatch(rangeHeader ?? '');
+      final match = RegExp(
+        r'^bytes=(\d+)-(\d+)$',
+      ).firstMatch(rangeHeader ?? '');
       if (supportsRanges && match != null) {
         final start = int.parse(match.group(1)!);
         final end = int.parse(match.group(2)!);
