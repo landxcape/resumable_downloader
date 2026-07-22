@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../transfers/byte_range.dart';
@@ -50,7 +51,7 @@ class FileTransferStorage {
     File partial,
     ByteRange range,
     Stream<List<int>> source, {
-    void Function(int receivedBytes)? onProgress,
+    FutureOr<void> Function(int receivedBytes)? onProgress,
   }) async {
     final handle = await partial.open(mode: FileMode.append);
     var written = 0;
@@ -62,7 +63,7 @@ class FileTransferStorage {
           throw StateError('Range worker exceeded its assigned byte range');
         }
         await handle.writeFrom(chunk);
-        onProgress?.call(written);
+        await onProgress?.call(written);
       }
       if (written != range.length) {
         throw StateError(

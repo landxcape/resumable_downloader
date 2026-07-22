@@ -7,6 +7,7 @@ class DownloadConfiguration {
     this.minimumBytesPerPart = 8 * 1024 * 1024,
     this.maxRetries = 3,
     this.retryDelay = const Duration(milliseconds: 250),
+    this.checkpointBytes = 1024 * 1024,
   }) {
     if (maxConcurrentDownloads <= 0) {
       throw ArgumentError.value(
@@ -50,6 +51,13 @@ class DownloadConfiguration {
         'must not be negative',
       );
     }
+    if (checkpointBytes <= 0) {
+      throw ArgumentError.value(
+        checkpointBytes,
+        'checkpointBytes',
+        'must be greater than zero',
+      );
+    }
   }
 
   final int maxConcurrentDownloads;
@@ -58,4 +66,5 @@ class DownloadConfiguration {
   final int minimumBytesPerPart;
   final int maxRetries;
   final Duration retryDelay;
+  final int checkpointBytes;
 }

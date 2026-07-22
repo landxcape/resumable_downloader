@@ -177,6 +177,7 @@ class TransferCoordinator {
                 ? DownloadStatus.completed
                 : DownloadStatus.downloading,
     };
+    final checkpointedByRange = Map<ByteRange, int>.from(receivedByRange);
     TransferManifest createManifest() => TransferManifest(
       key: key,
       sourceUri: request.url,
@@ -253,27 +254,39 @@ class TransferCoordinator {
         storage: _storage,
       );
       await Future.wait(
-        pendingRanges.map(
-          (range) => worker.run(
+        pendingRanges.map((range) {
+          final initialReceivedBytes = receivedByRange[range]!;
+          final requestRange = ByteRange(
+            range.start + initialReceivedBytes,
+            range.end,
+          );
+          return worker.run(
             transferId: controller.task.id,
             url: request.url,
             partial: partial,
-            range: range,
+            range: requestRange,
             totalBytes: totalBytes,
             headers: request.headers,
             cancellation: cancellation,
-            onProgress: (receivedBytes) {
-              receivedByRange[range] = receivedBytes;
+            onProgress: (receivedBytes) async {
+              final totalReceivedBytes = initialReceivedBytes + receivedBytes;
+              receivedByRange[range] = totalReceivedBytes;
               emitProgress();
+              if (totalReceivedBytes - checkpointedByRange[range]! >=
+                  _configuration.checkpointBytes) {
+                checkpointedByRange[range] = totalReceivedBytes;
+                await _storage.writeManifest(createManifest());
+              }
             },
             onComplete: () async {
               receivedByRange[range] = range.length;
+              checkpointedByRange[range] = range.length;
               statusByRange[range] = DownloadStatus.completed;
               emitProgress(force: true);
               await _storage.writeManifest(createManifest());
             },
-          ),
-        ),
+          );
+        }),
       );
     } else if (pendingRanges.isNotEmpty) {
       final lease = await _scheduler.acquire(controller.task.id);

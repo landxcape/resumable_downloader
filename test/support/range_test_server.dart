@@ -13,6 +13,8 @@ class RangeTestServer {
     required this.failFirstRequests,
     required this.failingRequestNumbers,
     required this.entityTag,
+    required this.chunkSize,
+    required this.chunkDelay,
   });
 
   final HttpServer _server;
@@ -24,6 +26,8 @@ class RangeTestServer {
   final int failFirstRequests;
   final Set<int> failingRequestNumbers;
   String entityTag;
+  final int? chunkSize;
+  final Duration chunkDelay;
   var _activeRequests = 0;
   var _requestCount = 0;
   var maxConcurrentRequests = 0;
@@ -40,6 +44,8 @@ class RangeTestServer {
     int failFirstRequests = 0,
     Set<int> failingRequestNumbers = const <int>{},
     String entityTag = '"fixture"',
+    int? chunkSize,
+    Duration chunkDelay = Duration.zero,
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final result = RangeTestServer._(
@@ -52,6 +58,8 @@ class RangeTestServer {
       failFirstRequests: failFirstRequests,
       failingRequestNumbers: Set<int>.unmodifiable(failingRequestNumbers),
       entityTag: entityTag,
+      chunkSize: chunkSize,
+      chunkDelay: chunkDelay,
     );
     server.listen((request) => unawaited(result._handle(request)));
     return result;
@@ -81,6 +89,9 @@ class RangeTestServer {
         await Future<void>.delayed(responseDelay);
       }
       final response = request.response;
+      if (chunkSize != null) {
+        response.bufferOutput = false;
+      }
       response.headers.set(HttpHeaders.etagHeader, entityTag);
       if (includeContentLength && request.method == 'HEAD') {
         response.contentLength = _bytes.length;
@@ -107,7 +118,7 @@ class RangeTestServer {
         if (includeContentLength) {
           response.contentLength = slice.length;
         }
-        response.add(Uint8List.fromList(slice));
+        await _writeBytes(response, slice);
         await response.close();
         return;
       }
@@ -115,10 +126,29 @@ class RangeTestServer {
       if (includeContentLength) {
         response.contentLength = _bytes.length;
       }
-      response.add(Uint8List.fromList(_bytes));
+      await _writeBytes(response, _bytes);
       await response.close();
     } finally {
       _activeRequests--;
+    }
+  }
+
+  Future<void> _writeBytes(HttpResponse response, List<int> bytes) async {
+    final size = chunkSize;
+    if (size == null) {
+      response.add(Uint8List.fromList(bytes));
+      return;
+    }
+    for (var offset = 0; offset < bytes.length; offset += size) {
+      response.add(
+        Uint8List.fromList(
+          bytes.sublist(offset, (offset + size).clamp(0, bytes.length)),
+        ),
+      );
+      await response.flush();
+      if (chunkDelay > Duration.zero) {
+        await Future<void>.delayed(chunkDelay);
+      }
     }
   }
 }

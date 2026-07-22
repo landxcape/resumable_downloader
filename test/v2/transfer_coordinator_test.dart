@@ -6,6 +6,7 @@ import 'package:resumable_downloader/src/v2/scheduling/transfer_scheduler.dart';
 import 'package:resumable_downloader/src/v2/download_configuration.dart';
 import 'package:resumable_downloader/src/v2/support/download_exception.dart';
 import 'package:resumable_downloader/src/v2/storage/file_transfer_storage.dart';
+import 'package:resumable_downloader/src/v2/transfers/transfer_key.dart';
 import 'package:resumable_downloader/src/v2/status/download_status.dart';
 import 'package:resumable_downloader/src/v2/status/download_update.dart';
 import 'package:resumable_downloader/src/v2/transport/dio_transfer_http_client.dart';
@@ -80,6 +81,59 @@ void main() {
 
     await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
     expect((await updates).last.status, DownloadStatus.cancelled);
+  });
+
+  test('a later task resumes an incomplete range from its checkpoint', () async {
+    await server.close();
+    fixtureBytes = List<int>.generate(4096, (index) => index % 256);
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      chunkSize: 8,
+      chunkDelay: const Duration(milliseconds: 20),
+    );
+    final configuration = DownloadConfiguration(
+      checkpointBytes: 8,
+      maxConcurrentConnections: 1,
+      maxConnectionsPerDownload: 2,
+      minimumBytesPerPart: 2048,
+      maxRetries: 0,
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: configuration,
+    );
+    final request = DownloadRequest(url: server.uri, fileName: 'partial.bin');
+    final task = coordinator.start(request);
+    final result = expectLater(
+      task.result,
+      throwsA(isA<DownloadCancelledException>()),
+    );
+
+    await task.updates.firstWhere((update) => update.receivedBytes >= 8);
+    await task.cancel();
+    await result;
+
+    final manifest = await FileTransferStorage(
+      temporaryDirectory,
+    ).readManifest(TransferKey.fromRequest(request));
+    final checkpoint = manifest!.ranges.firstWhere(
+      (range) => range.receivedBytes > 0 && !range.isComplete,
+    );
+    expect(checkpoint.receivedBytes, greaterThanOrEqualTo(8));
+    expect(checkpoint.receivedBytes, lessThan(checkpoint.range.length));
+
+    final output = await coordinator.start(request).result;
+
+    expect(await output.readAsBytes(), fixtureBytes);
+    expect(
+      server.requestedRanges,
+      contains(
+        'bytes=${checkpoint.range.start + checkpoint.receivedBytes}-${checkpoint.range.end}',
+      ),
+    );
   });
 
   test('retries a transient probe failure before completing', () async {

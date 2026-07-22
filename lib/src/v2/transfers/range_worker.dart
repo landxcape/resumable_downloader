@@ -29,7 +29,7 @@ class RangeWorker {
     required int totalBytes,
     Map<String, String> headers = const <String, String>{},
     TransferCancellation? cancellation,
-    void Function(int receivedBytes)? onProgress,
+    FutureOr<void> Function(int receivedBytes)? onProgress,
     FutureOr<void> Function()? onComplete,
   }) async {
     final lease = await _scheduler.acquire(transferId);
