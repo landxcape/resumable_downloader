@@ -6,6 +6,8 @@
 
 - Require Dio 5.10.0 and handle `transformTimeout` so analysis succeeds with
   the newest compatible Dio release.
+- Raise the Dart and Flutter minimums to match the latest `path_provider`
+  dependency floor.
 
 ## 0.1.0-dev.1 - V2 pre-release
 
