@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.2
+
+### Fixed
+
+- Require Dio 5.10.0 and handle `transformTimeout` so analysis succeeds with
+  the newest compatible Dio release.
+
 ## 0.1.0-dev.1 - V2 pre-release
 
 ### Added
