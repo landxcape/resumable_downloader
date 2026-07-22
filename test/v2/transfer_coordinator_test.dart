@@ -229,4 +229,40 @@ void main() {
       );
     },
   );
+
+  test('a changed entity tag discards stale completed ranges', () async {
+    await server.close();
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      failingRequestNumbers: <int>{4},
+    );
+    final configuration = DownloadConfiguration(
+      maxConcurrentDownloads: 1,
+      maxConcurrentConnections: 1,
+      maxConnectionsPerDownload: 2,
+      minimumBytesPerPart: 32,
+      maxRetries: 0,
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: configuration,
+      scheduler: TransferScheduler(configuration),
+    );
+    final request = DownloadRequest(url: server.uri, fileName: 'etag.bin');
+    final failed = coordinator.start(request);
+
+    await expectLater(failed.result, throwsA(anything));
+    server.entityTag = '"changed"';
+
+    final output = await coordinator.start(request).result;
+
+    expect(await output.readAsBytes(), fixtureBytes);
+    expect(
+      server.requestedRanges.where((range) => range == 'bytes=0-31'),
+      hasLength(2),
+    );
+  });
 }

@@ -12,6 +12,7 @@ class RangeTestServer {
     required this.responseDelay,
     required this.failFirstRequests,
     required this.failingRequestNumbers,
+    required this.entityTag,
   });
 
   final HttpServer _server;
@@ -22,6 +23,7 @@ class RangeTestServer {
   final Duration responseDelay;
   final int failFirstRequests;
   final Set<int> failingRequestNumbers;
+  String entityTag;
   var _activeRequests = 0;
   var _requestCount = 0;
   var maxConcurrentRequests = 0;
@@ -37,6 +39,7 @@ class RangeTestServer {
     Duration responseDelay = Duration.zero,
     int failFirstRequests = 0,
     Set<int> failingRequestNumbers = const <int>{},
+    String entityTag = '"fixture"',
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final result = RangeTestServer._(
@@ -48,6 +51,7 @@ class RangeTestServer {
       responseDelay: responseDelay,
       failFirstRequests: failFirstRequests,
       failingRequestNumbers: Set<int>.unmodifiable(failingRequestNumbers),
+      entityTag: entityTag,
     );
     server.listen((request) => unawaited(result._handle(request)));
     return result;
@@ -77,7 +81,7 @@ class RangeTestServer {
         await Future<void>.delayed(responseDelay);
       }
       final response = request.response;
-      response.headers.set(HttpHeaders.etagHeader, '"fixture"');
+      response.headers.set(HttpHeaders.etagHeader, entityTag);
       if (includeContentLength && request.method == 'HEAD') {
         response.contentLength = _bytes.length;
       }
