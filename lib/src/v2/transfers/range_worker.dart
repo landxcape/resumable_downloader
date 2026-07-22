@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import '../scheduling/transfer_scheduler.dart';
 import '../storage/file_transfer_storage.dart';
@@ -29,7 +30,7 @@ class RangeWorker {
     Map<String, String> headers = const <String, String>{},
     TransferCancellation? cancellation,
     void Function(int receivedBytes)? onProgress,
-    void Function()? onComplete,
+    FutureOr<void> Function()? onComplete,
   }) async {
     final lease = await _scheduler.acquire(transferId);
     try {
@@ -51,7 +52,7 @@ class RangeWorker {
         response.body,
         onProgress: onProgress,
       );
-      onComplete?.call();
+      await onComplete?.call();
     } finally {
       await lease.release();
     }

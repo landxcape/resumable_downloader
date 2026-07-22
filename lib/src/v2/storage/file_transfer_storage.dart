@@ -2,12 +2,16 @@ import 'dart:io';
 
 import '../transfers/byte_range.dart';
 import '../transfers/transfer_key.dart';
+import 'manifest_store.dart';
+import 'transfer_manifest.dart';
 
 /// Owns V2 partial files. Legacy `.tmp` files are never addressed here.
 class FileTransferStorage {
   FileTransferStorage(this._baseDirectory);
 
   final Directory _baseDirectory;
+
+  late final ManifestStore _manifestStore = ManifestStore(_baseDirectory);
 
   Directory get _directory =>
       Directory('${_baseDirectory.path}/.resumable_downloader_v2');
@@ -79,5 +83,21 @@ class FileTransferStorage {
       throw StateError('Output file already exists: ${output.path}');
     }
     return partial.rename(output.path);
+  }
+
+  Future<TransferManifest?> readManifest(TransferKey key) =>
+      _manifestStore.read(key);
+
+  Future<void> writeManifest(TransferManifest manifest) =>
+      _manifestStore.write(manifest);
+
+  Future<void> deleteManifest(TransferKey key) => _manifestStore.delete(key);
+
+  Future<void> discard(TransferKey key) async {
+    final partial = File('${_directory.path}/${key.value}.partial');
+    if (await partial.exists()) {
+      await partial.delete();
+    }
+    await _manifestStore.delete(key);
   }
 }

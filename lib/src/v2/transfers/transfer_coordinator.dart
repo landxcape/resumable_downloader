@@ -9,6 +9,7 @@ import '../status/download_status.dart';
 import '../status/download_range_update.dart';
 import '../status/download_update.dart';
 import '../storage/file_transfer_storage.dart';
+import '../storage/transfer_manifest.dart';
 import '../support/download_exception.dart';
 import '../transport/transfer_cancellation.dart';
 import '../transport/transfer_http_client.dart';
@@ -145,22 +146,54 @@ class TransferCoordinator {
       throw StateError('V2 single-stream transfers require a content length');
     }
 
-    final key = TransferKey(controller.task.id.replaceAll('-', '_'));
-    final partial = await _storage.createPartialFile(
-      key,
-      totalBytes: totalBytes,
-    );
+    final key = TransferKey.fromRequest(request);
     final plan = TransferPlan.create(
       totalBytes: totalBytes,
       probe: probeResult,
       configuration: _configuration,
     );
+    final outputFileName = _fileNameFor(request);
+    var manifest = await _storage.readManifest(key);
+    if (manifest != null &&
+        !_isCompatibleManifest(
+          manifest,
+          request: request,
+          outputFileName: outputFileName,
+          totalBytes: totalBytes,
+          probe: probeResult,
+          plan: plan,
+        )) {
+      await _storage.discard(key);
+      manifest = null;
+    }
+    final partial = await _storage.openPartial(key, totalBytes: totalBytes);
     final receivedByRange = <ByteRange, int>{
-      for (final range in plan.ranges) range: 0,
+      for (final range in plan.ranges) range: _receivedBytes(manifest, range),
     };
     final statusByRange = <ByteRange, DownloadStatus>{
-      for (final range in plan.ranges) range: DownloadStatus.downloading,
+      for (final range in plan.ranges)
+        range:
+            receivedByRange[range] == range.length
+                ? DownloadStatus.completed
+                : DownloadStatus.downloading,
     };
+    TransferManifest createManifest() => TransferManifest(
+      key: key,
+      sourceUri: request.url,
+      outputFileName: outputFileName,
+      totalBytes: totalBytes,
+      entityTag: probeResult.entityTag,
+      lastModified: probeResult.lastModified,
+      ranges: plan.ranges
+          .map(
+            (range) => TransferRangeCheckpoint(
+              range: range,
+              receivedBytes: receivedByRange[range]!,
+            ),
+          )
+          .toList(growable: false),
+    );
+    await _storage.writeManifest(createManifest());
     DateTime? lastProgressEmission;
 
     void emitProgress({
@@ -210,6 +243,9 @@ class TransferCoordinator {
     }
 
     emitProgress(force: true);
+    final pendingRanges = plan.ranges
+        .where((range) => receivedByRange[range] != range.length)
+        .toList(growable: false);
     if (plan.isMultipart) {
       final worker = RangeWorker(
         scheduler: _scheduler,
@@ -217,7 +253,7 @@ class TransferCoordinator {
         storage: _storage,
       );
       await Future.wait(
-        plan.ranges.map(
+        pendingRanges.map(
           (range) => worker.run(
             transferId: controller.task.id,
             url: request.url,
@@ -230,15 +266,16 @@ class TransferCoordinator {
               receivedByRange[range] = receivedBytes;
               emitProgress();
             },
-            onComplete: () {
+            onComplete: () async {
               receivedByRange[range] = range.length;
               statusByRange[range] = DownloadStatus.completed;
               emitProgress(force: true);
+              await _storage.writeManifest(createManifest());
             },
           ),
         ),
       );
-    } else {
+    } else if (pendingRanges.isNotEmpty) {
       final lease = await _scheduler.acquire(controller.task.id);
       try {
         final response = await _transport.get(
@@ -268,20 +305,55 @@ class TransferCoordinator {
         receivedByRange[range] = range.length;
         statusByRange[range] = DownloadStatus.completed;
         emitProgress(force: true);
+        await _storage.writeManifest(createManifest());
       } finally {
         await lease.release();
       }
     }
-    final output = await _storage.finalize(
-      partial,
-      fileName: _fileNameFor(request),
-    );
+    final output = await _storage.finalize(partial, fileName: outputFileName);
+    await _storage.deleteManifest(key);
     emitProgress(
       force: true,
       taskStatus: DownloadStatus.completed,
       outputPath: output.path,
     );
     controller.complete(output);
+  }
+
+  int _receivedBytes(TransferManifest? manifest, ByteRange range) {
+    if (manifest == null) {
+      return 0;
+    }
+    for (final checkpoint in manifest.ranges) {
+      if (checkpoint.range == range) {
+        return checkpoint.receivedBytes;
+      }
+    }
+    return 0;
+  }
+
+  bool _isCompatibleManifest(
+    TransferManifest manifest, {
+    required DownloadRequest request,
+    required String outputFileName,
+    required int totalBytes,
+    required TransferProbeResult probe,
+    required TransferPlan plan,
+  }) {
+    if (manifest.sourceUri != request.url ||
+        manifest.outputFileName != outputFileName ||
+        manifest.totalBytes != totalBytes ||
+        manifest.ranges.length != plan.ranges.length ||
+        manifest.ranges.any(
+          (checkpoint) => !plan.ranges.contains(checkpoint.range),
+        )) {
+      return false;
+    }
+    if (manifest.entityTag != null && manifest.entityTag != probe.entityTag) {
+      return false;
+    }
+    return manifest.lastModified == null ||
+        manifest.lastModified == probe.lastModified;
   }
 
   Future<void> _waitBeforeRetry(

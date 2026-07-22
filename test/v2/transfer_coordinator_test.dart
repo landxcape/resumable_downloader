@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/src/v2/download_request.dart';
+import 'package:resumable_downloader/src/v2/scheduling/transfer_scheduler.dart';
 import 'package:resumable_downloader/src/v2/download_configuration.dart';
 import 'package:resumable_downloader/src/v2/support/download_exception.dart';
 import 'package:resumable_downloader/src/v2/storage/file_transfer_storage.dart';
@@ -186,4 +187,46 @@ void main() {
     await result;
     expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 250)));
   });
+
+  test(
+    'a later task skips completed ranges from a failed multipart task',
+    () async {
+      await server.close();
+      server = await RangeTestServer.start(
+        bytes: fixtureBytes,
+        failingRequestNumbers: <int>{4},
+      );
+      final configuration = DownloadConfiguration(
+        maxConcurrentDownloads: 1,
+        maxConcurrentConnections: 1,
+        maxConnectionsPerDownload: 2,
+        minimumBytesPerPart: 32,
+        maxRetries: 0,
+      );
+      final client = DioTransferHttpClient();
+      coordinator = TransferCoordinator(
+        storage: FileTransferStorage(temporaryDirectory),
+        transport: client,
+        probe: TransferProbe(client),
+        configuration: configuration,
+        scheduler: TransferScheduler(configuration),
+      );
+      final request = DownloadRequest(url: server.uri, fileName: 'resume.bin');
+      final failed = coordinator.start(request);
+      final failedResult = expectLater(failed.result, throwsA(anything));
+
+      await failedResult;
+      final output = await coordinator.start(request).result;
+
+      expect(await output.readAsBytes(), fixtureBytes);
+      expect(
+        server.requestedRanges.where((range) => range == 'bytes=0-31'),
+        hasLength(1),
+      );
+      expect(
+        server.requestedRanges.where((range) => range == 'bytes=32-63'),
+        hasLength(2),
+      );
+    },
+  );
 }

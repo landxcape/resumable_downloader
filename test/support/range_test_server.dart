@@ -25,6 +25,7 @@ class RangeTestServer {
   var _activeRequests = 0;
   var _requestCount = 0;
   var maxConcurrentRequests = 0;
+  final List<String> requestedRanges = <String>[];
 
   Uri get uri => Uri.parse('http://127.0.0.1:${_server.port}/fixture.bin');
 
@@ -56,6 +57,10 @@ class RangeTestServer {
 
   Future<void> _handle(HttpRequest request) async {
     _requestCount++;
+    final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
+    if (rangeHeader != null) {
+      requestedRanges.add(rangeHeader);
+    }
     _activeRequests++;
     maxConcurrentRequests =
         maxConcurrentRequests < _activeRequests
@@ -81,7 +86,6 @@ class RangeTestServer {
         return;
       }
 
-      final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
       final match = RegExp(
         r'^bytes=(\d+)-(\d+)$',
       ).firstMatch(rangeHeader ?? '');
