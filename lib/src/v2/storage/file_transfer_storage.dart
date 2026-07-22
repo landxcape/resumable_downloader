@@ -12,15 +12,22 @@ class FileTransferStorage {
   Directory get _directory =>
       Directory('${_baseDirectory.path}/.resumable_downloader_v2');
 
-  Future<File> createPartialFile(
-    TransferKey key, {
-    required int totalBytes,
-  }) async {
+  /// Opens durable partial storage without truncating existing transfer bytes.
+  Future<File> openPartial(TransferKey key, {required int totalBytes}) async {
     if (totalBytes <= 0) {
       throw ArgumentError.value(totalBytes, 'totalBytes', 'must be positive');
     }
     await _directory.create(recursive: true);
     final file = File('${_directory.path}/${key.value}.partial');
+    if (await file.exists()) {
+      final existingLength = await file.length();
+      if (existingLength != totalBytes) {
+        throw StateError(
+          'Partial file length $existingLength does not match $totalBytes',
+        );
+      }
+      return file;
+    }
     final handle = await file.open(mode: FileMode.write);
     try {
       await handle.setPosition(totalBytes - 1);
@@ -31,13 +38,17 @@ class FileTransferStorage {
     return file;
   }
 
+  /// @deprecated Use [openPartial] so existing partial bytes are preserved.
+  Future<File> createPartialFile(TransferKey key, {required int totalBytes}) =>
+      openPartial(key, totalBytes: totalBytes);
+
   Future<void> writeRange(
     File partial,
     ByteRange range,
     Stream<List<int>> source, {
     void Function(int receivedBytes)? onProgress,
   }) async {
-    final handle = await partial.open(mode: FileMode.writeOnly);
+    final handle = await partial.open(mode: FileMode.append);
     var written = 0;
     try {
       await handle.setPosition(range.start);

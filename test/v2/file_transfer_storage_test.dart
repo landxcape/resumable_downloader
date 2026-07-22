@@ -44,6 +44,19 @@ void main() {
     },
   );
 
+  test('opening an existing partial preserves its downloaded ranges', () async {
+    final partial = await storage.openPartial(key, totalBytes: 6);
+    await storage.writeRange(
+      partial,
+      const ByteRange(0, 2),
+      Stream<List<int>>.value(<int>[0, 1, 2]),
+    );
+
+    final reopened = await storage.openPartial(key, totalBytes: 6);
+
+    expect(await reopened.readAsBytes(), <int>[0, 1, 2, 0, 0, 0]);
+  });
+
   test('manifest store round trips a completed range map', () async {
     final store = ManifestStore(temporaryDirectory);
     final manifest = TransferManifest(
