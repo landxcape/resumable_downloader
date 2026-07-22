@@ -12,6 +12,7 @@ import 'storage/file_transfer_storage.dart';
 import 'transport/dio_transfer_http_client.dart';
 import 'transport/transfer_probe.dart';
 import 'transfers/transfer_coordinator.dart';
+import 'transfers/transfer_key.dart';
 
 /// V2 download manager for native Flutter applications.
 class DownloadManager {
@@ -19,11 +20,11 @@ class DownloadManager {
     Directory? baseDirectory,
     this.subdirectory,
     DownloadConfiguration? configuration,
-  })  : _baseDirectory = baseDirectory,
-        configuration = configuration ?? DownloadConfiguration(),
-        _updates = StreamController<DownloadUpdate>.broadcast(sync: true),
-        _transport = DioTransferHttpClient(),
-        _scheduler = TransferScheduler(configuration ?? DownloadConfiguration());
+  }) : _baseDirectory = baseDirectory,
+       configuration = configuration ?? DownloadConfiguration(),
+       _updates = StreamController<DownloadUpdate>.broadcast(sync: true),
+       _transport = DioTransferHttpClient(),
+       _scheduler = TransferScheduler(configuration ?? DownloadConfiguration());
 
   final Directory? _baseDirectory;
   final String? subdirectory;
@@ -31,6 +32,8 @@ class DownloadManager {
   final StreamController<DownloadUpdate> _updates;
   final DioTransferHttpClient _transport;
   final TransferScheduler _scheduler;
+  final Map<TransferKey, DownloadTask> _activeTasks =
+      <TransferKey, DownloadTask>{};
   var _nextTaskId = 0;
   var _disposed = false;
 
@@ -42,9 +45,22 @@ class DownloadManager {
     if (_disposed) {
       throw StateError('DownloadManager has been disposed');
     }
+    final key = TransferKey.fromRequest(request);
+    final activeTask = _activeTasks[key];
+    if (activeTask != null) {
+      return activeTask;
+    }
     final controller = DownloadTaskController('manager-task-${++_nextTaskId}');
-    unawaited(_start(controller, request));
-    return controller.task;
+    final task = controller.task;
+    _activeTasks[key] = task;
+    unawaited(
+      _start(controller, request).whenComplete(() {
+        if (identical(_activeTasks[key], task)) {
+          _activeTasks.remove(key);
+        }
+      }),
+    );
+    return task;
   }
 
   /// Starts a transfer and resolves with its final local file.
@@ -55,6 +71,7 @@ class DownloadManager {
       return;
     }
     _disposed = true;
+    _activeTasks.clear();
     await _updates.close();
   }
 
@@ -104,7 +121,11 @@ class DownloadManager {
         continue;
       }
       if (segment.contains('/') || segment.contains('\\')) {
-        throw ArgumentError.value(segment, 'subdirectory', 'must be one segment');
+        throw ArgumentError.value(
+          segment,
+          'subdirectory',
+          'must be one segment',
+        );
       }
       directory = Directory('${directory.path}/$segment');
     }
