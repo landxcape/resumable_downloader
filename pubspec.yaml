@@ -1,24 +1,18 @@
 name: resumable_downloader
-description: "A robust download manager with resumable support, queuing,
-  concurrency, and error handling — built on Dio."
-version: 0.0.38
+description: Reliable Flutter downloads with multipart ranges, durable resume, scheduling, integrity checks, and authenticated restoration.
+version: 0.1.0-dev.1
 homepage: https://github.com/landxcape/resumable_downloader
-keywords:
+repository: https://github.com/landxcape/resumable_downloader
+topics:
   - downloader
-  - resumable
+  - resumable-download
   - dio
-  - concurrent
-  - queue
   - flutter
-  - download-manager
-  - file-download
-  - progress
-  - retry
-  - rename
+  - concurrency
 
 environment:
   sdk: ^3.7.2
-  flutter: ">=1.17.0"
+  flutter: ">=3.29.3"
 
 dependencies:
   collection: ^1.19.1

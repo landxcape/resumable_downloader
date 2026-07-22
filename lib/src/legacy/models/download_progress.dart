@@ -11,6 +11,8 @@ class DownloadProgress {
 
   /// The total number of bytes expected to be downloaded.
   final int totalByte;
+
+  /// Creates a progress value from received and expected byte counts.
   const DownloadProgress({required this.receivedByte, required this.totalByte});
 
   /// Calculates the download progress as a ratio between 0 and 1.0.
@@ -18,14 +20,20 @@ class DownloadProgress {
 
   /// Converts the download progress to kilobytes.
   double get receivedKB => receivedByte / 1024;
+
+  /// Converts the expected byte count to kilobytes.
   double get totalKB => totalByte / 1024;
 
   /// Converts the download progress to megabytes.
   double get receivedMB => receivedKB / 1024;
+
+  /// Converts the expected byte count to megabytes.
   double get totalMB => totalKB / 1024;
 
   /// Converts the download progress to gigabytes.
   double get receivedGB => receivedMB / 1024;
+
+  /// Converts the expected byte count to gigabytes.
   double get totalGB => totalMB / 1024;
 }
 
@@ -40,18 +48,24 @@ extension DownloadProgressExtension on DownloadProgress {
   /// Converts the download progress to a string representing the kilobytes.
   String getReceivedKB({int fractionDigits = 2}) =>
       receivedKB.toStringAsFixed(fractionDigits);
+
+  /// Formats the expected byte count in kilobytes.
   String getTotalKB({int fractionDigits = 2}) =>
       (totalKB).toStringAsFixed(fractionDigits);
 
   /// Converts the download progress to a string representing the megabytes.
   String getReceivedMB({int fractionDigits = 2}) =>
       (receivedMB).toStringAsFixed(fractionDigits);
+
+  /// Formats the expected byte count in megabytes.
   String getTotalMB({int fractionDigits = 2}) =>
       (totalMB).toStringAsFixed(fractionDigits);
 
   /// Converts the download progress to a string representing the gigabytes.
   String getReceivedGB({int fractionDigits = 2}) =>
       (receivedGB).toStringAsFixed(fractionDigits);
+
+  /// Formats the expected byte count in gigabytes.
   String getTotalGB({int fractionDigits = 2}) =>
       (totalGB).toStringAsFixed(fractionDigits);
 }

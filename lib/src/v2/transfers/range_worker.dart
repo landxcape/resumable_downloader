@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
 
 import '../scheduling/transfer_scheduler.dart';
 import '../storage/file_transfer_storage.dart';
+import '../support/download_exception.dart';
 import '../transport/transfer_http_client.dart';
 import '../transport/transfer_cancellation.dart';
 import 'byte_range.dart';
@@ -42,9 +43,15 @@ class RangeWorker {
         },
         cancellation: cancellation,
       );
-      if (response.statusCode != HttpStatus.partialContent ||
-          !_matchesRange(response.header('content-range'), range, totalBytes)) {
-        throw HttpException('Server did not honor the requested byte range');
+      if (response.statusCode != 206) {
+        await response.body.drain<void>();
+        throw DownloadHttpException(response.statusCode);
+      }
+      if (!_matchesRange(response.header('content-range'), range, totalBytes)) {
+        await response.body.drain<void>();
+        throw const DownloadProtocolException(
+          'Server returned an invalid Content-Range response',
+        );
       }
       await _storage.writeRange(
         partial,

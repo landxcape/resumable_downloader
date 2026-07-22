@@ -6,18 +6,34 @@ import 'status/download_update.dart';
 /// A handle for one V2 transfer.
 class DownloadTask {
   DownloadTask._(this.id)
-      : _result = Completer<File>(),
-        _updates = StreamController<DownloadUpdate>.broadcast(sync: true);
+    : _result = Completer<File>(),
+      _updates = StreamController<DownloadUpdate>.broadcast(sync: true);
 
+  /// Manager-scoped identifier for this task.
   final String id;
   final Completer<File> _result;
   final StreamController<DownloadUpdate> _updates;
   Future<void> Function()? _cancel;
+  Future<void> Function()? _pause;
+  Future<void> Function()? _resume;
 
+  /// Ordered lifecycle and progress snapshots for this task.
   Stream<DownloadUpdate> get updates => _updates.stream;
+
+  /// Completes with the finalized file or fails with a typed download exception.
   Future<File> get result => _result.future;
 
+  /// Whether [result] has completed successfully or with an error.
+  bool get isCompleted => _result.isCompleted;
+
+  /// Stops the transfer and removes its resumable artifacts.
   Future<void> cancel() => _cancel?.call() ?? Future<void>.value();
+
+  /// Stops active network work while retaining the partial transfer state.
+  Future<void> pause() => _pause?.call() ?? Future<void>.value();
+
+  /// Continues a transfer previously paused through [pause].
+  Future<void> resume() => _resume?.call() ?? Future<void>.value();
 }
 
 /// Internal mutable side of a [DownloadTask].
@@ -30,7 +46,20 @@ class DownloadTaskController {
     task._cancel = handler;
   }
 
+  void setPauseHandler(Future<void> Function() handler) {
+    task._pause = handler;
+  }
+
+  void setResumeHandler(Future<void> Function() handler) {
+    task._resume = handler;
+  }
+
+  DownloadUpdate? _lastUpdate;
+
+  DownloadUpdate? get lastUpdate => _lastUpdate;
+
   void emit(DownloadUpdate update) {
+    _lastUpdate = update;
     if (!task._updates.isClosed) {
       task._updates.add(update);
     }

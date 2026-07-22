@@ -9,6 +9,8 @@ class TransferManifest {
     required this.outputFileName,
     required this.totalBytes,
     required List<TransferRangeCheckpoint> ranges,
+    this.restorationId,
+    this.expectedSha256,
     this.entityTag,
     this.lastModified,
   }) : ranges = List.unmodifiable(ranges) {
@@ -36,12 +38,14 @@ class TransferManifest {
     }
   }
 
-  static const int formatVersion = 2;
+  static const int formatVersion = 3;
 
   final TransferKey key;
   final Uri sourceUri;
   final String outputFileName;
   final int totalBytes;
+  final String? restorationId;
+  final String? expectedSha256;
   final String? entityTag;
   final String? lastModified;
   final List<TransferRangeCheckpoint> ranges;
@@ -52,6 +56,8 @@ class TransferManifest {
     'sourceUri': sourceUri.toString(),
     'outputFileName': outputFileName,
     'totalBytes': totalBytes,
+    'restorationId': restorationId,
+    'expectedSha256': expectedSha256,
     'entityTag': entityTag,
     'lastModified': lastModified,
     'ranges': ranges
@@ -65,6 +71,8 @@ class TransferManifest {
         json['sourceUri'] is! String ||
         json['outputFileName'] is! String ||
         json['totalBytes'] is! int ||
+        (json['restorationId'] != null && json['restorationId'] is! String) ||
+        (json['expectedSha256'] != null && json['expectedSha256'] is! String) ||
         json['ranges'] is! List<Object?>) {
       throw const FormatException('Invalid V2 transfer manifest');
     }
@@ -93,6 +101,8 @@ class TransferManifest {
         sourceUri: sourceUri,
         outputFileName: json['outputFileName']! as String,
         totalBytes: totalBytes,
+        restorationId: json['restorationId'] as String?,
+        expectedSha256: json['expectedSha256'] as String?,
         entityTag: json['entityTag'] as String?,
         lastModified: json['lastModified'] as String?,
         ranges: ranges,
@@ -109,6 +119,8 @@ class TransferManifest {
         other.sourceUri != sourceUri ||
         other.outputFileName != outputFileName ||
         other.totalBytes != totalBytes ||
+        other.restorationId != restorationId ||
+        other.expectedSha256 != expectedSha256 ||
         other.entityTag != entityTag ||
         other.lastModified != lastModified ||
         other.ranges.length != ranges.length) {
@@ -128,6 +140,8 @@ class TransferManifest {
     sourceUri,
     outputFileName,
     totalBytes,
+    restorationId,
+    expectedSha256,
     entityTag,
     lastModified,
     Object.hashAll(ranges),

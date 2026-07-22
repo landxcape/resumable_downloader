@@ -11,6 +11,7 @@ import '../status/download_update.dart';
 import '../storage/file_transfer_storage.dart';
 import '../storage/transfer_manifest.dart';
 import '../support/download_exception.dart';
+import '../support/retry_policy.dart';
 import '../transport/transfer_cancellation.dart';
 import '../transport/transfer_http_client.dart';
 import '../transport/transfer_probe.dart';
@@ -57,40 +58,106 @@ class TransferCoordinator {
   final TransferScheduler _scheduler;
   var _nextTaskId = 0;
 
-  DownloadTask start(DownloadRequest request, {String? taskId}) {
+  DownloadTask start(
+    DownloadRequest request, {
+    String? taskId,
+    TransferKey? restoredKey,
+    bool allowSourceUriChange = false,
+  }) {
     final resolvedTaskId = taskId ?? 'task-${++_nextTaskId}';
     final controller = DownloadTaskController(resolvedTaskId);
-    unawaited(Future<void>.microtask(() => _run(controller, request)));
+    unawaited(
+      Future<void>.microtask(
+        () => _run(
+          controller,
+          request,
+          restoredKey: restoredKey,
+          allowSourceUriChange: allowSourceUriChange,
+        ),
+      ),
+    );
     return controller.task;
   }
 
   Future<void> _run(
     DownloadTaskController controller,
-    DownloadRequest request,
-  ) async {
-    final cancellation = TransferCancellation();
+    DownloadRequest request, {
+    TransferKey? restoredKey,
+    required bool allowSourceUriChange,
+  }) async {
+    var cancellation = TransferCancellation();
+    Completer<void>? resumeSignal;
+    var resumeRequested = false;
     controller.setCancelHandler(() async => cancellation.cancel());
+    controller.setPauseHandler(() async => cancellation.pause());
+    controller.setResumeHandler(() async {
+      final signal = resumeSignal;
+      if (signal != null && !signal.isCompleted) {
+        signal.complete();
+      } else if (cancellation.isPaused) {
+        resumeRequested = true;
+      }
+    });
     _scheduler.enqueue(controller.task.id);
+    var isEnqueued = true;
+    var retryAttempt = 0;
     try {
-      for (var retryAttempt = 0; ; retryAttempt++) {
+      while (true) {
         try {
-          await _runAttempt(controller, request, cancellation);
+          await _runAttempt(
+            controller,
+            request,
+            cancellation,
+            restoredKey: restoredKey,
+            allowSourceUriChange: allowSourceUriChange,
+          );
           return;
         } catch (error, stackTrace) {
+          if (cancellation.isPaused && !cancellation.isCancelled) {
+            final signal = Completer<void>();
+            resumeSignal = signal;
+            if (resumeRequested) {
+              resumeRequested = false;
+              signal.complete();
+            }
+            _emitPausedUpdate(controller);
+            _scheduler.complete(controller.task.id);
+            isEnqueued = false;
+            await Future.any<void>(<Future<void>>[
+              signal.future,
+              cancellation.whenCancelled,
+            ]);
+            resumeSignal = null;
+            if (cancellation.isCancelled) {
+              _completeTerminal(
+                controller,
+                error: const DownloadCancelledException(),
+                stackTrace: stackTrace,
+                isCancelled: true,
+              );
+              return;
+            }
+            cancellation = TransferCancellation();
+            _scheduler.enqueue(controller.task.id);
+            isEnqueued = true;
+            continue;
+          }
           final isCancelled =
               cancellation.isCancelled || error is DownloadCancelledException;
-          if (!isCancelled && retryAttempt < _configuration.maxRetries) {
-            final nextRetryAttempt = retryAttempt + 1;
+          if (!isCancelled &&
+              RetryPolicy.shouldRetry(error) &&
+              retryAttempt < _configuration.maxRetries) {
+            retryAttempt++;
             controller.emit(
               DownloadUpdate(
                 taskId: controller.task.id,
                 status: DownloadStatus.retrying,
                 receivedBytes: 0,
-                retryAttempt: nextRetryAttempt,
+                retryAttempt: retryAttempt,
                 error: error,
               ),
             );
-            await _waitBeforeRetry(nextRetryAttempt, cancellation);
+            await _waitBeforeRetry(retryAttempt, cancellation);
             if (!cancellation.isCancelled) {
               continue;
             }
@@ -112,15 +179,20 @@ class TransferCoordinator {
         }
       }
     } finally {
-      _scheduler.complete(controller.task.id);
+      if (isEnqueued) {
+        _scheduler.complete(controller.task.id);
+      }
     }
   }
 
   Future<void> _runAttempt(
     DownloadTaskController controller,
     DownloadRequest request,
-    TransferCancellation cancellation,
-  ) async {
+    TransferCancellation cancellation, {
+    TransferKey? restoredKey,
+    required bool allowSourceUriChange,
+  }) async {
+    final outputFileName = _fileNameFor(request);
     controller.emit(
       DownloadUpdate(
         taskId: controller.task.id,
@@ -128,6 +200,35 @@ class TransferCoordinator {
         receivedBytes: 0,
       ),
     );
+    var existingOutput = await _storage.resolveExistingOutput(
+      outputFileName,
+      request.existingFilePolicy,
+    );
+    if (existingOutput != null && request.expectedSha256 != null) {
+      try {
+        await _storage.verifySha256(existingOutput, request.expectedSha256!);
+      } on DownloadIntegrityException {
+        if (request.existingFilePolicy != ExistingFilePolicy.resume) {
+          rethrow;
+        }
+        await existingOutput.delete();
+        existingOutput = null;
+      }
+    }
+    if (existingOutput != null) {
+      final bytes = await existingOutput.length();
+      controller.emit(
+        DownloadUpdate(
+          taskId: controller.task.id,
+          status: DownloadStatus.completed,
+          receivedBytes: bytes,
+          totalBytes: bytes,
+          outputPath: existingOutput.path,
+        ),
+      );
+      controller.complete(existingOutput);
+      return;
+    }
     final probeLease = await _scheduler.acquire(controller.task.id);
     final probeResult =
         await (() async {
@@ -146,14 +247,18 @@ class TransferCoordinator {
       throw StateError('V2 single-stream transfers require a content length');
     }
 
-    final key = TransferKey.fromRequest(request);
+    final key = restoredKey ?? TransferKey.fromRequest(request);
     final plan = TransferPlan.create(
       totalBytes: totalBytes,
       probe: probeResult,
       configuration: _configuration,
     );
-    final outputFileName = _fileNameFor(request);
-    var manifest = await _storage.readManifest(key);
+    TransferManifest? manifest;
+    try {
+      manifest = await _storage.readManifest(key);
+    } on FormatException {
+      await _storage.discard(key);
+    }
     if (manifest != null &&
         !_isCompatibleManifest(
           manifest,
@@ -162,11 +267,19 @@ class TransferCoordinator {
           totalBytes: totalBytes,
           probe: probeResult,
           plan: plan,
+          allowSourceUriChange: allowSourceUriChange,
         )) {
       await _storage.discard(key);
       manifest = null;
     }
-    final partial = await _storage.openPartial(key, totalBytes: totalBytes);
+    File partial;
+    try {
+      partial = await _storage.openPartial(key, totalBytes: totalBytes);
+    } on StateError {
+      await _storage.discard(key);
+      manifest = null;
+      partial = await _storage.openPartial(key, totalBytes: totalBytes);
+    }
     final receivedByRange = <ByteRange, int>{
       for (final range in plan.ranges) range: _receivedBytes(manifest, range),
     };
@@ -183,6 +296,8 @@ class TransferCoordinator {
       sourceUri: request.url,
       outputFileName: outputFileName,
       totalBytes: totalBytes,
+      restorationId: request.restorationId,
+      expectedSha256: request.expectedSha256,
       entityTag: probeResult.entityTag,
       lastModified: probeResult.lastModified,
       ranges: plan.ranges
@@ -300,9 +415,8 @@ class TransferCoordinator {
           throw const DownloadCancelledException();
         }
         if (response.statusCode != HttpStatus.ok) {
-          throw HttpException(
-            'Unexpected download status ${response.statusCode}',
-          );
+          await response.body.drain<void>();
+          throw DownloadHttpException(response.statusCode);
         }
         await _storage.writeRange(
           partial,
@@ -323,7 +437,33 @@ class TransferCoordinator {
         await lease.release();
       }
     }
-    final output = await _storage.finalize(partial, fileName: outputFileName);
+    if (cancellation.isCancelled) {
+      throw const DownloadCancelledException();
+    }
+    if (cancellation.isPaused) {
+      throw StateError('Transfer paused before finalization');
+    }
+    if (receivedByRange.entries.any(
+      (entry) => entry.value != entry.key.length,
+    )) {
+      throw const DownloadIntegrityException(
+        'Not all planned byte ranges completed before finalization',
+      );
+    }
+    final expectedSha256 = request.expectedSha256;
+    if (expectedSha256 != null) {
+      try {
+        await _storage.verifySha256(partial, expectedSha256);
+      } on DownloadIntegrityException {
+        await _storage.discard(key);
+        rethrow;
+      }
+    }
+    final output = await _storage.finalize(
+      partial,
+      fileName: outputFileName,
+      expectedBytes: totalBytes,
+    );
     await _storage.deleteManifest(key);
     emitProgress(
       force: true,
@@ -352,10 +492,13 @@ class TransferCoordinator {
     required int totalBytes,
     required TransferProbeResult probe,
     required TransferPlan plan,
+    required bool allowSourceUriChange,
   }) {
-    if (manifest.sourceUri != request.url ||
+    if ((!allowSourceUriChange && manifest.sourceUri != request.url) ||
         manifest.outputFileName != outputFileName ||
         manifest.totalBytes != totalBytes ||
+        manifest.restorationId != request.restorationId ||
+        manifest.expectedSha256 != request.expectedSha256 ||
         manifest.ranges.length != plan.ranges.length ||
         manifest.ranges.any(
           (checkpoint) => !plan.ranges.contains(checkpoint.range),
@@ -377,9 +520,24 @@ class TransferCoordinator {
     if (delay > Duration.zero) {
       await Future.any<void>(<Future<void>>[
         Future<void>.delayed(delay),
-        cancellation.whenCancelled,
+        cancellation.whenInterrupted,
       ]);
     }
+  }
+
+  void _emitPausedUpdate(DownloadTaskController controller) {
+    final latest = controller.lastUpdate;
+    controller.emit(
+      DownloadUpdate(
+        taskId: controller.task.id,
+        status: DownloadStatus.paused,
+        receivedBytes: latest?.receivedBytes ?? 0,
+        totalBytes: latest?.totalBytes,
+        activeRanges: 0,
+        completedRanges: latest?.completedRanges ?? 0,
+        ranges: latest?.ranges ?? const <DownloadRangeUpdate>[],
+      ),
+    );
   }
 
   void _completeTerminal(

@@ -12,6 +12,7 @@ class RangeTestServer {
     required this.responseDelay,
     required this.failFirstRequests,
     required this.failingRequestNumbers,
+    required this.forcedStatusCode,
     required this.entityTag,
     required this.chunkSize,
     required this.chunkDelay,
@@ -25,6 +26,7 @@ class RangeTestServer {
   final Duration responseDelay;
   final int failFirstRequests;
   final Set<int> failingRequestNumbers;
+  final int? forcedStatusCode;
   String entityTag;
   final int? chunkSize;
   final Duration chunkDelay;
@@ -43,6 +45,7 @@ class RangeTestServer {
     Duration responseDelay = Duration.zero,
     int failFirstRequests = 0,
     Set<int> failingRequestNumbers = const <int>{},
+    int? forcedStatusCode,
     String entityTag = '"fixture"',
     int? chunkSize,
     Duration chunkDelay = Duration.zero,
@@ -57,6 +60,7 @@ class RangeTestServer {
       responseDelay: responseDelay,
       failFirstRequests: failFirstRequests,
       failingRequestNumbers: Set<int>.unmodifiable(failingRequestNumbers),
+      forcedStatusCode: forcedStatusCode,
       entityTag: entityTag,
       chunkSize: chunkSize,
       chunkDelay: chunkDelay,
@@ -79,6 +83,11 @@ class RangeTestServer {
             ? _activeRequests
             : maxConcurrentRequests;
     try {
+      if (forcedStatusCode != null) {
+        request.response.statusCode = forcedStatusCode!;
+        await request.response.close();
+        return;
+      }
       if (_requestCount <= failFirstRequests ||
           failingRequestNumbers.contains(_requestCount)) {
         request.response.statusCode = HttpStatus.serviceUnavailable;

@@ -1,5 +1,4 @@
-// --- Enums and Typedefs ---
-
+/// Severity assigned to a legacy log record.
 enum LogLevel {
   /// Verbose logging, useful for deep debugging.
   debug,

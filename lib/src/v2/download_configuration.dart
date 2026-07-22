@@ -1,5 +1,6 @@
 /// Limits used by a [DownloadManager] to schedule file transfers and ranges.
 class DownloadConfiguration {
+  /// Creates transfer limits, retry behavior, and checkpoint granularity.
   DownloadConfiguration({
     this.maxConcurrentDownloads = 3,
     this.maxConcurrentConnections = 6,
@@ -60,11 +61,24 @@ class DownloadConfiguration {
     }
   }
 
+  /// Maximum number of files allowed to transfer concurrently.
   final int maxConcurrentDownloads;
+
+  /// Maximum number of HTTP requests shared by all managed downloads.
   final int maxConcurrentConnections;
+
+  /// Maximum number of HTTP requests assigned to one file.
   final int maxConnectionsPerDownload;
+
+  /// Smallest part size used when a server supports multipart range requests.
   final int minimumBytesPerPart;
+
+  /// Number of retries after an initial transient transport failure.
   final int maxRetries;
+
+  /// Delay between transient retry attempts.
   final Duration retryDelay;
+
+  /// Bytes written between durable progress-manifest checkpoints.
   final int checkpointBytes;
 }

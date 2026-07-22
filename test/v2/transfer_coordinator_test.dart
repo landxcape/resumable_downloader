@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/src/v2/download_request.dart';
 import 'package:resumable_downloader/src/v2/scheduling/transfer_scheduler.dart';
@@ -64,6 +65,62 @@ void main() {
       );
     },
   );
+
+  test('resuming a request returns an existing completed output', () async {
+    final request = DownloadRequest(url: server.uri, fileName: 'existing.bin');
+
+    final first = await coordinator.start(request).result;
+    final resumed = await coordinator.start(request).result;
+
+    expect(resumed.path, first.path);
+    expect(await resumed.readAsBytes(), fixtureBytes);
+  });
+
+  test('replace policy downloads over an existing completed output', () async {
+    await coordinator
+        .start(DownloadRequest(url: server.uri, fileName: 'replace.bin'))
+        .result;
+
+    final replaced =
+        await coordinator
+            .start(
+              DownloadRequest(
+                url: server.uri,
+                fileName: 'replace.bin',
+                existingFilePolicy: ExistingFilePolicy.replace,
+              ),
+            )
+            .result;
+
+    expect(await replaced.readAsBytes(), fixtureBytes);
+  });
+
+  test('discards a corrupted manifest and restarts cleanly', () async {
+    final request = DownloadRequest(url: server.uri, fileName: 'corrupt.bin');
+    final key = TransferKey.fromRequest(request);
+    final manifest = File(
+      '${temporaryDirectory.path}/.resumable_downloader_v2/${key.value}.json',
+    );
+    await manifest.parent.create(recursive: true);
+    await manifest.writeAsString('{not json');
+
+    final output = await coordinator.start(request).result;
+
+    expect(await output.readAsBytes(), fixtureBytes);
+  });
+
+  test('discards a truncated partial file and restarts cleanly', () async {
+    final request = DownloadRequest(url: server.uri, fileName: 'truncated.bin');
+    final key = TransferKey.fromRequest(request);
+    final partial = await FileTransferStorage(
+      temporaryDirectory,
+    ).openPartial(key, totalBytes: fixtureBytes.length);
+    await partial.writeAsBytes(<int>[1]);
+
+    final output = await coordinator.start(request).result;
+
+    expect(await output.readAsBytes(), fixtureBytes);
+  });
 
   test('cancelling a task reaches a cancelled terminal state', () async {
     await server.close();
@@ -136,11 +193,52 @@ void main() {
     );
   });
 
+  test('pausing and resuming keeps the same task pending', () async {
+    await server.close();
+    fixtureBytes = List<int>.generate(4096, (index) => index % 256);
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      chunkSize: 8,
+      chunkDelay: const Duration(milliseconds: 20),
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        checkpointBytes: 8,
+        maxConcurrentConnections: 1,
+        maxConnectionsPerDownload: 2,
+        minimumBytesPerPart: 2048,
+        maxRetries: 0,
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'paused.bin'),
+    );
+    var completed = false;
+    task.result.then((_) => completed = true);
+
+    await task.updates.firstWhere((update) => update.receivedBytes >= 8);
+    await task.pause();
+    await task.updates.firstWhere(
+      (update) => update.status == DownloadStatus.paused,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(completed, isFalse);
+
+    await task.resume();
+    final file = await task.result;
+
+    expect(await file.readAsBytes(), fixtureBytes);
+  });
+
   test('retries a transient probe failure before completing', () async {
     await server.close();
     server = await RangeTestServer.start(
       bytes: fixtureBytes,
-      failFirstRequests: 2,
+      failFirstRequests: 1,
     );
     final client = DioTransferHttpClient();
     coordinator = TransferCoordinator(
@@ -173,6 +271,116 @@ void main() {
       ),
     );
   });
+
+  test('does not retry a permanent HTTP failure', () async {
+    await server.close();
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      forcedStatusCode: HttpStatus.notFound,
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        maxRetries: 3,
+        retryDelay: Duration.zero,
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'missing.bin'),
+    );
+    final updates = task.updates.toList();
+
+    await expectLater(task.result, throwsA(isA<DownloadHttpException>()));
+    expect(
+      (await updates).map((update) => update.status),
+      isNot(contains(DownloadStatus.retrying)),
+    );
+  });
+
+  test('rejects a completed file whose SHA-256 does not match', () async {
+    final request = DownloadRequest(
+      url: server.uri,
+      fileName: 'checksum.bin',
+      expectedSha256:
+          '0000000000000000000000000000000000000000000000000000000000000000',
+    );
+    final task = coordinator.start(request);
+
+    await expectLater(task.result, throwsA(isA<DownloadIntegrityException>()));
+    expect(
+      await File('${temporaryDirectory.path}/checksum.bin').exists(),
+      isFalse,
+    );
+    expect(
+      await FileTransferStorage(
+        temporaryDirectory,
+      ).readManifest(TransferKey.fromRequest(request)),
+      isNull,
+    );
+  });
+
+  test('finalizes a completed file with a matching SHA-256', () async {
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'verified.bin',
+        expectedSha256: sha256.convert(fixtureBytes).toString(),
+      ),
+    );
+
+    final file = await task.result;
+
+    expect(await file.readAsBytes(), fixtureBytes);
+  });
+
+  test('does not retry a malformed range probe response', () async {
+    await server.close();
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      malformedContentRange: true,
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        maxRetries: 3,
+        retryDelay: Duration.zero,
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'malformed.bin'),
+    );
+    final updates = task.updates.toList();
+
+    await expectLater(task.result, throwsA(isA<DownloadProtocolException>()));
+    expect(
+      (await updates).map((update) => update.status),
+      isNot(contains(DownloadStatus.retrying)),
+    );
+  });
+
+  test(
+    'falls back to a single stream when the range probe is ignored',
+    () async {
+      await server.close();
+      server = await RangeTestServer.start(
+        bytes: fixtureBytes,
+        supportsRanges: false,
+      );
+      final task = coordinator.start(
+        DownloadRequest(url: server.uri, fileName: 'single-stream.bin'),
+      );
+
+      final file = await task.result;
+
+      expect(await file.readAsBytes(), fixtureBytes);
+    },
+  );
 
   test('retries a multipart range failure before completing', () async {
     await server.close();

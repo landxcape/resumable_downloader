@@ -16,7 +16,12 @@ class DioTransferHttpClient implements TransferHttpClient {
     Map<String, String> headers = const <String, String>{},
     TransferCancellation? cancellation,
   }) {
-    return _open(url, method: 'GET', headers: headers, cancellation: cancellation);
+    return _open(
+      url,
+      method: 'GET',
+      headers: headers,
+      cancellation: cancellation,
+    );
   }
 
   @override
@@ -25,7 +30,12 @@ class DioTransferHttpClient implements TransferHttpClient {
     Map<String, String> headers = const <String, String>{},
     TransferCancellation? cancellation,
   }) {
-    return _open(url, method: 'HEAD', headers: headers, cancellation: cancellation);
+    return _open(
+      url,
+      method: 'HEAD',
+      headers: headers,
+      cancellation: cancellation,
+    );
   }
 
   Future<TransferResponse> _open(

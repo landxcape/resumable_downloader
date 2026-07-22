@@ -57,5 +57,6 @@ class QueueItem {
     this.onComplete,
   });
 
+  /// Stable legacy queue key derived from the optional file name and source URL.
   String get fileNameUrl => '${fileName == null ? '' : '$fileName-'}$url';
 }

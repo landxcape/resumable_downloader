@@ -1,8 +1,8 @@
 /// An inclusive byte range used by one V2 range worker.
 class ByteRange {
   const ByteRange(this.start, this.end)
-      : assert(start >= 0),
-        assert(end >= start);
+    : assert(start >= 0),
+      assert(end >= start);
 
   final int start;
   final int end;

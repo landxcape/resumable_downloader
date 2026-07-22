@@ -7,8 +7,9 @@ class TransferResponse {
     required Map<String, String> headers,
     required this.body,
   }) : headers = Map.unmodifiable({
-          for (final entry in headers.entries) entry.key.toLowerCase(): entry.value,
-        });
+         for (final entry in headers.entries)
+           entry.key.toLowerCase(): entry.value,
+       });
 
   final int statusCode;
   final Map<String, String> headers;

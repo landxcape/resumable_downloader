@@ -44,7 +44,9 @@ class TransferScheduler {
       throw StateError('Cannot complete a transfer with active connections');
     }
     _transfers.remove(transferId);
-    for (final waiter in _waiters.where((item) => item.transferId == transferId)) {
+    for (final waiter in _waiters.where(
+      (item) => item.transferId == transferId,
+    )) {
       waiter.completer.completeError(
         StateError('Transfer completed before its connection was granted'),
       );
@@ -95,9 +97,8 @@ class TransferScheduler {
     return _activeTransferCount < _configuration.maxConcurrentDownloads;
   }
 
-  int get _activeTransferCount => _transfers.values
-      .where((state) => state.activeConnections > 0)
-      .length;
+  int get _activeTransferCount =>
+      _transfers.values.where((state) => state.activeConnections > 0).length;
 
   void _release(String transferId) {
     final state = _transfers[transferId];

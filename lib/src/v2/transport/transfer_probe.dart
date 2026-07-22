@@ -1,5 +1,6 @@
 import 'transfer_http_client.dart';
 import 'transfer_cancellation.dart';
+import '../support/download_exception.dart';
 
 /// Metadata verified before selecting a V2 transfer plan.
 class TransferProbeResult {
@@ -33,8 +34,14 @@ class TransferProbe {
       cancellation: cancellation,
     );
     await head.body.drain<void>();
+    if (!_isSuccessful(head.statusCode) && !_canSkipHead(head.statusCode)) {
+      throw DownloadHttpException(head.statusCode);
+    }
 
-    final headLength = _parsePositiveInt(head.header('content-length'));
+    final headLength =
+        _isSuccessful(head.statusCode)
+            ? _parsePositiveInt(head.header('content-length'))
+            : null;
     final entityTag = head.header('etag');
     final lastModified = head.header('last-modified');
     final rangeResponse = await _client.get(
@@ -45,13 +52,21 @@ class TransferProbe {
     await rangeResponse.body.drain<void>();
 
     final range = _parseContentRange(rangeResponse.header('content-range'));
-    final supportsRanges = rangeResponse.statusCode == 206 &&
-        range != null &&
-        range.start == 0 &&
-        range.end == 0;
-    final totalBytes = supportsRanges
-        ? range.total
-        : headLength ?? _parsePositiveInt(rangeResponse.header('content-length'));
+    final supportsRanges = rangeResponse.statusCode == 206;
+    if (supportsRanges &&
+        (range == null || range.start != 0 || range.end != 0)) {
+      throw const DownloadProtocolException(
+        'Server returned an invalid probe Content-Range response',
+      );
+    }
+    if (!_isSuccessful(rangeResponse.statusCode)) {
+      throw DownloadHttpException(rangeResponse.statusCode);
+    }
+    final totalBytes =
+        supportsRanges
+            ? range!.total
+            : headLength ??
+                _parsePositiveInt(rangeResponse.header('content-length'));
 
     return TransferProbeResult(
       totalBytes: totalBytes,
@@ -65,6 +80,10 @@ class TransferProbe {
     final result = int.tryParse(value ?? '');
     return result != null && result > 0 ? result : null;
   }
+
+  bool _isSuccessful(int statusCode) => statusCode >= 200 && statusCode < 300;
+
+  bool _canSkipHead(int statusCode) => statusCode == 405 || statusCode == 501;
 
   _ContentRange? _parseContentRange(String? value) {
     final match = RegExp(r'^bytes (\d+)-(\d+)/(\d+)$').firstMatch(value ?? '');

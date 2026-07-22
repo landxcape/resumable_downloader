@@ -1,8 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
+import '../download_request.dart';
+import '../pending_download.dart';
 import '../transfers/byte_range.dart';
 import '../transfers/transfer_key.dart';
+import '../support/download_exception.dart';
 import 'manifest_store.dart';
 import 'transfer_manifest.dart';
 
@@ -11,6 +17,45 @@ class FileTransferStorage {
   FileTransferStorage(this._baseDirectory);
 
   final Directory _baseDirectory;
+
+  /// Finds durable V2 transfers below [rootDirectory].
+  static Future<List<StoredPendingDownload>> discoverPending(
+    Directory rootDirectory,
+  ) async {
+    if (!await rootDirectory.exists()) {
+      return const <StoredPendingDownload>[];
+    }
+    final pending = <StoredPendingDownload>[];
+    await for (final entity in rootDirectory.list(recursive: true)) {
+      if (entity is! File ||
+          entity.parent.path.split('/').last != '.resumable_downloader_v2') {
+        continue;
+      }
+      if (!entity.path.endsWith('.json')) {
+        continue;
+      }
+      final decoded = jsonDecode(await entity.readAsString());
+      if (decoded is! Map<String, Object?>) {
+        continue;
+      }
+      final manifest = TransferManifest.fromJson(decoded);
+      pending.add(
+        StoredPendingDownload(
+          pending: PendingDownload(
+            id: manifest.key.value,
+            sourceUri: manifest.sourceUri,
+            fileName: manifest.outputFileName,
+            totalBytes: manifest.totalBytes,
+            restorationId: manifest.restorationId,
+            expectedSha256: manifest.expectedSha256,
+          ),
+          key: manifest.key,
+          directory: entity.parent.parent,
+        ),
+      );
+    }
+    return pending;
+  }
 
   late final ManifestStore _manifestStore = ManifestStore(_baseDirectory);
 
@@ -75,7 +120,11 @@ class FileTransferStorage {
     }
   }
 
-  Future<File> finalize(File partial, {required String fileName}) async {
+  Future<File> finalize(
+    File partial, {
+    required String fileName,
+    required int expectedBytes,
+  }) async {
     if (fileName.isEmpty || fileName.contains('/') || fileName.contains('\\')) {
       throw ArgumentError.value(fileName, 'fileName', 'must be a file name');
     }
@@ -83,7 +132,47 @@ class FileTransferStorage {
     if (await output.exists()) {
       throw StateError('Output file already exists: ${output.path}');
     }
+    final actualBytes = await partial.length();
+    if (actualBytes != expectedBytes) {
+      throw DownloadIntegrityException(
+        'Partial file has $actualBytes bytes; expected $expectedBytes',
+      );
+    }
     return partial.rename(output.path);
+  }
+
+  Future<File?> resolveExistingOutput(
+    String fileName,
+    ExistingFilePolicy policy,
+  ) async {
+    _validateFileName(fileName);
+    final output = File('${_baseDirectory.path}/$fileName');
+    if (!await output.exists()) {
+      return null;
+    }
+    switch (policy) {
+      case ExistingFilePolicy.resume:
+      case ExistingFilePolicy.keepExisting:
+        return output;
+      case ExistingFilePolicy.replace:
+        await output.delete();
+        return null;
+      case ExistingFilePolicy.fail:
+        throw StateError('Output file already exists: ${output.path}');
+    }
+  }
+
+  Future<void> verifySha256(File partial, String expectedSha256) async {
+    final actual = await sha256.bind(partial.openRead()).first;
+    if (actual.toString() != expectedSha256) {
+      throw const DownloadIntegrityException('SHA-256 verification failed');
+    }
+  }
+
+  void _validateFileName(String fileName) {
+    if (fileName.isEmpty || fileName.contains('/') || fileName.contains('\\')) {
+      throw ArgumentError.value(fileName, 'fileName', 'must be a file name');
+    }
   }
 
   Future<TransferManifest?> readManifest(TransferKey key) =>
@@ -101,4 +190,35 @@ class FileTransferStorage {
     }
     await _manifestStore.delete(key);
   }
+
+  Future<void> deleteArtifacts(
+    TransferKey key, {
+    required String fileName,
+    bool deleteOutput = true,
+    bool deleteStaging = true,
+  }) async {
+    _validateFileName(fileName);
+    if (deleteOutput) {
+      final output = File('${_baseDirectory.path}/$fileName');
+      if (await output.exists()) {
+        await output.delete();
+      }
+    }
+    if (deleteStaging) {
+      await discard(key);
+    }
+  }
+}
+
+/// Internal location of a [PendingDownload] discovered on disk.
+class StoredPendingDownload {
+  const StoredPendingDownload({
+    required this.pending,
+    required this.key,
+    required this.directory,
+  });
+
+  final PendingDownload pending;
+  final TransferKey key;
+  final Directory directory;
 }

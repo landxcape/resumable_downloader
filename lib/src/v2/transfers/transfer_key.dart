@@ -20,6 +20,8 @@ class TransferKey {
       'url': request.url.toString(),
       'fileName': request.fileName,
       'subdirectory': request.subdirectory,
+      'restorationId': request.restorationId,
+      'expectedSha256': request.expectedSha256,
     });
     return TransferKey(sha256.convert(utf8.encode(identity)).toString());
   }

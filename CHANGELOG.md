@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.0-dev.1 - V2 pre-release
+
+### Added
+
+- V2 task-oriented download API through `resumable_downloader.dart`.
+- Bounded multi-file scheduling and multipart HTTP range downloads.
+- Durable partial-file manifests, pause/resume, artifact deletion, and output policies.
+- HTTP response validation, transient retry policy, SHA-256 verification, and secure restoration callbacks.
+- Developer transfer-lab example with runtime configuration and transfer inspection.
+
+### Changed
+
+- The default package entrypoint now exposes V2.
+- The former API remains available through
+  `resumable_downloader_legacy.dart` for maintenance compatibility.
+- V2 does not promise background execution after application termination.
+
 ## [0.0.38] - 2026-01-04
 
 - Fixed `_getFilenameFromQueueItem` to return the user-provided `fileName` exactly as is, without automatic extension guessing.

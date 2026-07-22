@@ -74,7 +74,7 @@ class _AdaptiveProgressPainter extends CustomPainter {
     return switch (status) {
       DownloadStatus.completed ||
       DownloadStatus.downloading => colorScheme.primary,
-      DownloadStatus.retrying => colorScheme.tertiary,
+      DownloadStatus.paused || DownloadStatus.retrying => colorScheme.tertiary,
       DownloadStatus.failed => colorScheme.error,
       DownloadStatus.cancelled => colorScheme.outline,
       DownloadStatus.queued ||

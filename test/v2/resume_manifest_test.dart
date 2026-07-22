@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/src/v2/download_request.dart';
+import 'package:resumable_downloader/src/v2/storage/manifest_store.dart';
 import 'package:resumable_downloader/src/v2/storage/transfer_manifest.dart';
 import 'package:resumable_downloader/src/v2/transfers/byte_range.dart';
 import 'package:resumable_downloader/src/v2/transfers/transfer_key.dart';
@@ -39,5 +42,33 @@ void main() {
       () => TransferRangeCheckpoint(range: ByteRange(0, 31), receivedBytes: 33),
       throwsArgumentError,
     );
+  });
+
+  test('serializes concurrent writes for the same manifest', () async {
+    final directory = await Directory.systemTemp.createTemp('rd-v2-manifest-');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ManifestStore(directory);
+    final key = TransferKey.fromRequest(request);
+
+    await Future.wait(
+      List<Future<void>>.generate(32, (index) {
+        return store.write(
+          TransferManifest(
+            key: key,
+            sourceUri: request.url,
+            outputFileName: 'archive.bin',
+            totalBytes: 64,
+            ranges: <TransferRangeCheckpoint>[
+              TransferRangeCheckpoint(
+                range: ByteRange(0, 63),
+                receivedBytes: index,
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+
+    expect((await store.read(key))!.ranges.single.receivedBytes, 31);
   });
 }

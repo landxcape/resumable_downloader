@@ -19,8 +19,10 @@ class TransferPlan {
         totalBytes < configuration.minimumBytesPerPart * 2) {
       return TransferPlan._(<ByteRange>[ByteRange(0, totalBytes - 1)]);
     }
-    final partCount = (totalBytes ~/ configuration.minimumBytesPerPart)
-        .clamp(1, configuration.maxConnectionsPerDownload);
+    final partCount = (totalBytes ~/ configuration.minimumBytesPerPart).clamp(
+      1,
+      configuration.maxConnectionsPerDownload,
+    );
     if (partCount < 2) {
       return TransferPlan._(<ByteRange>[ByteRange(0, totalBytes - 1)]);
     }

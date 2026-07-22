@@ -9,6 +9,7 @@ class ManifestStore {
   ManifestStore(this._baseDirectory);
 
   final Directory _baseDirectory;
+  Future<void> _operationTail = Future<void>.value();
 
   Directory get _directory =>
       Directory('${_baseDirectory.path}/.resumable_downloader_v2');
@@ -16,7 +17,7 @@ class ManifestStore {
   File _fileFor(TransferKey key) =>
       File('${_directory.path}/${key.value}.json');
 
-  Future<void> write(TransferManifest manifest) async {
+  Future<void> write(TransferManifest manifest) => _enqueue(() async {
     await _directory.create(recursive: true);
     final file = _fileFor(manifest.key);
     final temporaryFile = File('${file.path}.tmp');
@@ -25,7 +26,7 @@ class ManifestStore {
       flush: true,
     );
     await temporaryFile.rename(file.path);
-  }
+  });
 
   Future<TransferManifest?> read(TransferKey key) async {
     final file = _fileFor(key);
@@ -43,10 +44,16 @@ class ManifestStore {
     return manifest;
   }
 
-  Future<void> delete(TransferKey key) async {
+  Future<void> delete(TransferKey key) => _enqueue(() async {
     final file = _fileFor(key);
     if (await file.exists()) {
       await file.delete();
     }
+  });
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final result = _operationTail.then((_) => operation());
+    _operationTail = result.catchError((Object _) {});
+    return result;
   }
 }
