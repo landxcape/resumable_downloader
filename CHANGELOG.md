@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.3
+
+### Added
+
+- Add optional V2 custom download validation before finalization and when
+  returning retained `resume` or `keepExisting` outputs.
+
 ## 0.1.0-dev.2
 
 ### Fixed

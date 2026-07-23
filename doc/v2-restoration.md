@@ -30,6 +30,7 @@ final tasks = await manager.restorePending((pending) async {
     restorationId: pending.restorationId,
     headers: {'Authorization': 'Bearer $token'},
     expectedSha256: pending.expectedSha256,
+    validator: validateInvoice,
   );
 });
 ```
@@ -37,6 +38,10 @@ final tasks = await manager.restorePending((pending) async {
 The resolver may provide a changed URL. V2 resumes staged bytes only when the
 server validators and range plan remain compatible; otherwise it discards the
 staging data and restarts safely. Returning `null` skips a pending transfer.
+
+Validators are executable application code and are never stored in the
+manifest. Reattach the appropriate validator in the resolver, together with
+fresh URLs, headers, and any application-owned verification material.
 
 ## Manifest Compatibility
 
