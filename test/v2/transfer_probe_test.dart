@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:resumable_downloader/src/v2/support/download_exception.dart';
 import 'package:resumable_downloader/src/v2/transport/dio_transfer_http_client.dart';
 import 'package:resumable_downloader/src/v2/transport/transfer_probe.dart';
 
@@ -25,19 +26,21 @@ void main() {
     expect(result.entityTag, '"fixture"');
   });
 
-  test('marks a server that ignores range requests as single-stream only',
-      () async {
-    await server.close();
-    server = await RangeTestServer.start(
-      bytes: List<int>.generate(64, (index) => index),
-      supportsRanges: false,
-    );
+  test(
+    'marks a server that ignores range requests as single-stream only',
+    () async {
+      await server.close();
+      server = await RangeTestServer.start(
+        bytes: List<int>.generate(64, (index) => index),
+        supportsRanges: false,
+      );
 
-    final result = await probe.probe(server.uri);
+      final result = await probe.probe(server.uri);
 
-    expect(result.totalBytes, 64);
-    expect(result.supportsRanges, isFalse);
-  });
+      expect(result.totalBytes, 64);
+      expect(result.supportsRanges, isFalse);
+    },
+  );
 
   test('does not accept a malformed content range', () async {
     await server.close();
@@ -46,22 +49,26 @@ void main() {
       malformedContentRange: true,
     );
 
-    final result = await probe.probe(server.uri);
-
-    expect(result.supportsRanges, isFalse);
-  });
-
-  test('keeps total bytes unknown when no response provides a length', () async {
-    await server.close();
-    server = await RangeTestServer.start(
-      bytes: List<int>.generate(64, (index) => index),
-      supportsRanges: false,
-      includeContentLength: false,
+    await expectLater(
+      probe.probe(server.uri),
+      throwsA(isA<DownloadProtocolException>()),
     );
-
-    final result = await probe.probe(server.uri);
-
-    expect(result.totalBytes, isNull);
-    expect(result.supportsRanges, isFalse);
   });
+
+  test(
+    'keeps total bytes unknown when no response provides a length',
+    () async {
+      await server.close();
+      server = await RangeTestServer.start(
+        bytes: List<int>.generate(64, (index) => index),
+        supportsRanges: false,
+        includeContentLength: false,
+      );
+
+      final result = await probe.probe(server.uri);
+
+      expect(result.totalBytes, isNull);
+      expect(result.supportsRanges, isFalse);
+    },
+  );
 }
