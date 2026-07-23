@@ -4,6 +4,7 @@ import 'dart:io';
 import '../download_configuration.dart';
 import '../download_request.dart';
 import '../download_task.dart';
+import '../download_validation.dart';
 import '../scheduling/transfer_scheduler.dart';
 import '../status/download_status.dart';
 import '../status/download_range_update.dart';
@@ -204,10 +205,22 @@ class TransferCoordinator {
       outputFileName,
       request.existingFilePolicy,
     );
-    if (existingOutput != null && request.expectedSha256 != null) {
+    if (existingOutput != null) {
+      final bytes = await existingOutput.length();
       try {
-        await _storage.verifySha256(existingOutput, request.expectedSha256!);
+        await _validateFile(
+          existingOutput,
+          request: request,
+          fileName: outputFileName,
+          totalBytes: bytes,
+        );
       } on DownloadIntegrityException {
+        if (request.existingFilePolicy != ExistingFilePolicy.resume) {
+          rethrow;
+        }
+        await existingOutput.delete();
+        existingOutput = null;
+      } on DownloadValidationException {
         if (request.existingFilePolicy != ExistingFilePolicy.resume) {
           rethrow;
         }
@@ -230,18 +243,17 @@ class TransferCoordinator {
       return;
     }
     final probeLease = await _scheduler.acquire(controller.task.id);
-    final probeResult =
-        await (() async {
-          try {
-            return await _probe.probe(
-              request.url,
-              headers: request.headers,
-              cancellation: cancellation,
-            );
-          } finally {
-            await probeLease.release();
-          }
-        })();
+    final probeResult = await (() async {
+      try {
+        return await _probe.probe(
+          request.url,
+          headers: request.headers,
+          cancellation: cancellation,
+        );
+      } finally {
+        await probeLease.release();
+      }
+    })();
     final totalBytes = probeResult.totalBytes;
     if (totalBytes == null) {
       throw StateError('V2 single-stream transfers require a content length');
@@ -285,10 +297,9 @@ class TransferCoordinator {
     };
     final statusByRange = <ByteRange, DownloadStatus>{
       for (final range in plan.ranges)
-        range:
-            receivedByRange[range] == range.length
-                ? DownloadStatus.completed
-                : DownloadStatus.downloading,
+        range: receivedByRange[range] == range.length
+            ? DownloadStatus.completed
+            : DownloadStatus.downloading,
     };
     final checkpointedByRange = Map<ByteRange, int>.from(receivedByRange);
     TransferManifest createManifest() => TransferManifest(
@@ -344,14 +355,12 @@ class TransferCoordinator {
             (sum, value) => sum + value,
           ),
           totalBytes: totalBytes,
-          activeRanges:
-              statusByRange.values
-                  .where((status) => status == DownloadStatus.downloading)
-                  .length,
-          completedRanges:
-              statusByRange.values
-                  .where((status) => status == DownloadStatus.completed)
-                  .length,
+          activeRanges: statusByRange.values
+              .where((status) => status == DownloadStatus.downloading)
+              .length,
+          completedRanges: statusByRange.values
+              .where((status) => status == DownloadStatus.completed)
+              .length,
           outputPath: outputPath,
           ranges: ranges,
         ),
@@ -450,14 +459,25 @@ class TransferCoordinator {
         'Not all planned byte ranges completed before finalization',
       );
     }
-    final expectedSha256 = request.expectedSha256;
-    if (expectedSha256 != null) {
-      try {
-        await _storage.verifySha256(partial, expectedSha256);
-      } on DownloadIntegrityException {
-        await _storage.discard(key);
-        rethrow;
-      }
+    try {
+      await _validateFile(
+        partial,
+        request: request,
+        fileName: outputFileName,
+        totalBytes: totalBytes,
+      );
+    } on DownloadIntegrityException {
+      await _storage.discard(key);
+      rethrow;
+    } on DownloadValidationException {
+      await _storage.discard(key);
+      rethrow;
+    }
+    if (cancellation.isCancelled) {
+      throw const DownloadCancelledException();
+    }
+    if (cancellation.isPaused) {
+      throw StateError('Transfer paused during validation');
     }
     final output = await _storage.finalize(
       partial,
@@ -471,6 +491,44 @@ class TransferCoordinator {
       outputPath: output.path,
     );
     controller.complete(output);
+  }
+
+  Future<void> _validateFile(
+    File file, {
+    required DownloadRequest request,
+    required String fileName,
+    required int totalBytes,
+  }) async {
+    final expectedSha256 = request.expectedSha256;
+    if (expectedSha256 != null) {
+      await _storage.verifySha256(file, expectedSha256);
+    }
+    final validator = request.validator;
+    if (validator == null) {
+      return;
+    }
+    try {
+      final isValid = await validator(
+        DownloadValidationData(
+          file: file,
+          sourceUri: request.url,
+          fileName: fileName,
+          totalBytes: totalBytes,
+        ),
+      );
+      if (!isValid) {
+        throw const DownloadValidationException(
+          'The configured download validator rejected the file.',
+        );
+      }
+    } on DownloadValidationException {
+      rethrow;
+    } catch (error) {
+      throw DownloadValidationException(
+        'The configured download validator could not complete.',
+        cause: error,
+      );
+    }
   }
 
   int _receivedBytes(TransferManifest? manifest, ByteRange range) {
@@ -546,8 +604,9 @@ class TransferCoordinator {
     required StackTrace stackTrace,
     required bool isCancelled,
   }) {
-    final terminalError =
-        isCancelled ? const DownloadCancelledException() : error;
+    final terminalError = isCancelled
+        ? const DownloadCancelledException()
+        : error;
     controller.emit(
       DownloadUpdate(
         taskId: controller.task.id,

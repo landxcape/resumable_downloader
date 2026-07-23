@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/src/v2/download_request.dart';
+import 'package:resumable_downloader/src/v2/download_validation.dart';
 import 'package:resumable_downloader/src/v2/scheduling/transfer_scheduler.dart';
 import 'package:resumable_downloader/src/v2/download_configuration.dart';
 import 'package:resumable_downloader/src/v2/support/download_exception.dart';
@@ -81,16 +82,15 @@ void main() {
         .start(DownloadRequest(url: server.uri, fileName: 'replace.bin'))
         .result;
 
-    final replaced =
-        await coordinator
-            .start(
-              DownloadRequest(
-                url: server.uri,
-                fileName: 'replace.bin',
-                existingFilePolicy: ExistingFilePolicy.replace,
-              ),
-            )
-            .result;
+    final replaced = await coordinator
+        .start(
+          DownloadRequest(
+            url: server.uri,
+            fileName: 'replace.bin',
+            existingFilePolicy: ExistingFilePolicy.replace,
+          ),
+        )
+        .result;
 
     expect(await replaced.readAsBytes(), fixtureBytes);
   });
@@ -334,6 +334,206 @@ void main() {
     final file = await task.result;
 
     expect(await file.readAsBytes(), fixtureBytes);
+  });
+
+  test('passes complete staged metadata to a custom validator', () async {
+    DownloadValidationData? received;
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'validated.bin',
+        validator: (data) {
+          received = data;
+          return true;
+        },
+      ),
+    );
+
+    final file = await task.result;
+
+    expect(received!.file.path, contains('.resumable_downloader_v2'));
+    expect(received!.sourceUri, server.uri);
+    expect(received!.fileName, 'validated.bin');
+    expect(received!.totalBytes, fixtureBytes.length);
+    expect(await file.readAsBytes(), fixtureBytes);
+  });
+
+  test('rejecting a staged file fails and discards V2 staging', () async {
+    final request = DownloadRequest(
+      url: server.uri,
+      fileName: 'rejected.bin',
+      validator: (_) => false,
+    );
+    final task = coordinator.start(request);
+    final updates = task.updates.toList();
+
+    await expectLater(task.result, throwsA(isA<DownloadValidationException>()));
+    expect((await updates).last.error, isA<DownloadValidationException>());
+    expect(
+      await File('${temporaryDirectory.path}/rejected.bin').exists(),
+      isFalse,
+    );
+    expect(
+      await FileTransferStorage(
+        temporaryDirectory,
+      ).readManifest(TransferKey.fromRequest(request)),
+      isNull,
+    );
+  });
+
+  test('preserves a custom validator rejection reason', () async {
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'reason.bin',
+        validator: (_) => throw const DownloadValidationException(
+          'Release signature is invalid.',
+        ),
+      ),
+    );
+
+    await expectLater(
+      task.result,
+      throwsA(
+        isA<DownloadValidationException>().having(
+          (error) => error.message,
+          'message',
+          'Release signature is invalid.',
+        ),
+      ),
+    );
+  });
+
+  test('wraps an unexpected validator error as its cause', () async {
+    final cause = StateError('validation dependency unavailable');
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'validator-error.bin',
+        validator: (_) => throw cause,
+      ),
+    );
+
+    await expectLater(
+      task.result,
+      throwsA(
+        isA<DownloadValidationException>().having(
+          (error) => error.cause,
+          'cause',
+          same(cause),
+        ),
+      ),
+    );
+  });
+
+  test('skips custom validation after a SHA-256 mismatch', () async {
+    var wasCalled = false;
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'checksum-precedence.bin',
+        expectedSha256:
+            '0000000000000000000000000000000000000000000000000000000000000000',
+        validator: (_) {
+          wasCalled = true;
+          return true;
+        },
+      ),
+    );
+
+    await expectLater(task.result, throwsA(isA<DownloadIntegrityException>()));
+    expect(wasCalled, isFalse);
+  });
+
+  test(
+    'resume replaces a rejected existing output with a fresh download',
+    () async {
+      final request = DownloadRequest(url: server.uri, fileName: 'resume.bin');
+      await coordinator.start(request).result;
+      var calls = 0;
+
+      final output = await coordinator
+          .start(
+            DownloadRequest(
+              url: server.uri,
+              fileName: 'resume.bin',
+              validator: (_) => ++calls > 1,
+            ),
+          )
+          .result;
+
+      expect(calls, 2);
+      expect(await output.readAsBytes(), fixtureBytes);
+    },
+  );
+
+  test('keepExisting preserves a rejected existing output', () async {
+    final request = DownloadRequest(url: server.uri, fileName: 'keep.bin');
+    final existing = await coordinator.start(request).result;
+
+    await expectLater(
+      coordinator
+          .start(
+            DownloadRequest(
+              url: server.uri,
+              fileName: 'keep.bin',
+              existingFilePolicy: ExistingFilePolicy.keepExisting,
+              validator: (_) => false,
+            ),
+          )
+          .result,
+      throwsA(isA<DownloadValidationException>()),
+    );
+    expect(await existing.exists(), isTrue);
+  });
+
+  test('replace validates the freshly downloaded output', () async {
+    await coordinator
+        .start(DownloadRequest(url: server.uri, fileName: 'replace.bin'))
+        .result;
+    var calls = 0;
+
+    final output = await coordinator
+        .start(
+          DownloadRequest(
+            url: server.uri,
+            fileName: 'replace.bin',
+            existingFilePolicy: ExistingFilePolicy.replace,
+            validator: (_) {
+              calls++;
+              return true;
+            },
+          ),
+        )
+        .result;
+
+    expect(calls, 1);
+    expect(await output.readAsBytes(), fixtureBytes);
+  });
+
+  test('fail does not validate an existing output', () async {
+    await coordinator
+        .start(DownloadRequest(url: server.uri, fileName: 'fail.bin'))
+        .result;
+    var calls = 0;
+
+    await expectLater(
+      coordinator
+          .start(
+            DownloadRequest(
+              url: server.uri,
+              fileName: 'fail.bin',
+              existingFilePolicy: ExistingFilePolicy.fail,
+              validator: (_) {
+                calls++;
+                return true;
+              },
+            ),
+          )
+          .result,
+      throwsA(isA<StateError>()),
+    );
+    expect(calls, 0);
   });
 
   test('does not retry a malformed range probe response', () async {
