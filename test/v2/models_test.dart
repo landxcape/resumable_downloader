@@ -59,8 +59,9 @@ void main() {
 
   test('keeps an optional custom validator on the request', () {
     final file = File('fixture.bin');
-    final validator = (DownloadValidationData data) =>
-        data.file.path == file.path;
+
+    bool validator(DownloadValidationData data) => data.file.path == file.path;
+
     final request = DownloadRequest(
       url: Uri.parse('https://example.test/fixture.bin'),
       validator: validator,
