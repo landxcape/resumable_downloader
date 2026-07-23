@@ -3,6 +3,8 @@ export './src/v2/download_manager.dart' show DownloadManager;
 export './src/v2/pending_download.dart' show PendingDownload;
 export './src/v2/download_request.dart'
     show DownloadRequest, ExistingFilePolicy;
+export './src/v2/download_validation.dart'
+    show DownloadValidationData, DownloadValidator;
 export './src/v2/download_task.dart' show DownloadTask;
 export './src/v2/support/download_exception.dart'
     show
@@ -10,6 +12,7 @@ export './src/v2/support/download_exception.dart'
         DownloadException,
         DownloadHttpException,
         DownloadIntegrityException,
+        DownloadValidationException,
         DownloadProtocolException;
 export './src/v2/status/download_status.dart' show DownloadStatus;
 export './src/v2/status/download_range_update.dart' show DownloadRangeUpdate;

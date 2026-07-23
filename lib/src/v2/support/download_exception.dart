@@ -40,3 +40,9 @@ class DownloadIntegrityException extends DownloadException {
   /// Creates an integrity failure with an explanation of the failed validation.
   const DownloadIntegrityException(super.message);
 }
+
+/// A configured [DownloadValidator] rejected a file or could not complete.
+class DownloadValidationException extends DownloadException {
+  /// Creates a custom-validation failure with an optional original [cause].
+  const DownloadValidationException(super.message, {super.cause});
+}

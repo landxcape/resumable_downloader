@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resumable_downloader/src/v2/download_configuration.dart';
 import 'package:resumable_downloader/src/v2/download_request.dart';
+import 'package:resumable_downloader/src/v2/download_validation.dart';
 import 'package:resumable_downloader/src/v2/status/download_status.dart';
 import 'package:resumable_downloader/src/v2/status/download_update.dart';
 
@@ -52,5 +55,17 @@ void main() {
 
     expect(request.existingFilePolicy, ExistingFilePolicy.resume);
     expect(request.headers, isEmpty);
+  });
+
+  test('keeps an optional custom validator on the request', () {
+    final file = File('fixture.bin');
+    final validator = (DownloadValidationData data) =>
+        data.file.path == file.path;
+    final request = DownloadRequest(
+      url: Uri.parse('https://example.test/fixture.bin'),
+      validator: validator,
+    );
+
+    expect(request.validator, same(validator));
   });
 }

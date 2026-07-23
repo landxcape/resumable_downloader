@@ -1,3 +1,5 @@
+import 'download_validation.dart';
+
 /// Defines how an existing output file is handled before a V2 transfer starts.
 enum ExistingFilePolicy {
   /// Reuse a matching staged transfer or an existing completed output.
@@ -24,6 +26,7 @@ class DownloadRequest {
     Map<String, String> headers = const <String, String>{},
     this.existingFilePolicy = ExistingFilePolicy.resume,
     String? expectedSha256,
+    this.validator,
   }) : headers = Map.unmodifiable(headers),
        expectedSha256 = _normalizeSha256(expectedSha256);
 
@@ -47,6 +50,12 @@ class DownloadRequest {
 
   /// Optional lowercase SHA-256 digest required before finalization.
   final String? expectedSha256;
+
+  /// Optional app-owned content check run after SHA-256 validation.
+  ///
+  /// The callback is never persisted. It must treat its file as read-only and
+  /// return `true` only when the completed content is acceptable.
+  final DownloadValidator? validator;
 
   static String? _normalizeSha256(String? value) {
     if (value == null) {
