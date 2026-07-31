@@ -262,6 +262,7 @@ restart restoration scenarios.
 
 ## Release Status
 
-V2 is available as a pub.dev pre-release and remains under active development.
-Track remaining stable-release work in
+V2 is available as the stable `0.1.0` release on pub.dev. The package targets
+reliable foreground Flutter transfers; background adapters remain separate
+future work. Track deferred improvements in
 [doc/v2-publish-checklist.md](doc/v2-publish-checklist.md).

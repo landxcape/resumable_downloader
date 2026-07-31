@@ -1,6 +1,7 @@
-# V2 Publish Checklist
+# V2 Stable Release Checklist
 
-Release target: foreground Flutter download manager with durable restoration.
+Release target: stable `0.1.0` foreground Flutter download manager with durable
+restoration.
 Android and iOS background adapters are explicitly out of scope for this
 release.
 
@@ -49,8 +50,11 @@ release.
 - [x] Run `flutter pub publish --dry-run`.
 - [x] Review `pubspec.yaml`: description, homepage, repository, topics, SDK constraints, and version.
 - [x] Update `CHANGELOG.md` with V2 scope, breaking changes, and legacy availability.
-- [x] Choose the release version and pre-release label: `0.1.0-dev.1`.
-- [ ] Review the final diff and commit only source, tests, docs, and intentional example changes.
+- [x] Choose the stable release version: `0.1.0`.
+- [x] Review the final diff and commit only source, tests, docs, and intentional example changes.
+
+The stable release is published. Remaining unchecked items are follow-up
+validation or enhancement work and do not block the foreground V2 release.
 
 ## Deferred After Publish
 

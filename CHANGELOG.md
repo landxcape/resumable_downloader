@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.0
+
+The first stable V2 release for reliable foreground Flutter downloads.
+
+### Added
+
+- Promote the tested V2 API and developer transfer lab from prerelease to
+  stable `0.1.0`.
+- Retain the older API through the separate
+  `resumable_downloader_legacy.dart` entrypoint.
+
+### Stable Scope
+
+- Multipart and single-stream downloads with bounded scheduling.
+- Durable resume, pause, cancellation, deletion, and existing-file policies.
+- SHA-256 and custom validation, including retained-output validation.
+- Authenticated restoration through app-owned credential resolvers.
+- Operation-scoped updates, ordered results, active-task sharing, and
+  foreground promotion.
+
+### Deferred
+
+- Background transfers after operating-system termination remain outside this
+  package's foreground Flutter scope.
+- Application-specific catalog delta selection and trusted-media caching remain
+  the responsibility of the consuming application.
+
 ## 0.1.0-dev.5
 
 ### Added
