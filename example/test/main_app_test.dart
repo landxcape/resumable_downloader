@@ -25,6 +25,8 @@ void main() {
 
     await tester.tap(find.text('Add URL'));
     await tester.pumpAndSettle();
+    expect(find.text('normal'), findsOneWidget);
+    expect(find.text('foreground'), findsOneWidget);
     await tester.enterText(
       find.widgetWithText(TextField, 'Download URL'),
       'https://example.com/archive.bin',
@@ -34,5 +36,13 @@ void main() {
 
     expect(find.text('archive.bin'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('offers a scoped multi-file operation preset', (tester) async {
+    await tester.pumpWidget(const MainApp());
+    await tester.tap(find.text('Presets'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Start scoped batch'), findsOneWidget);
   });
 }

@@ -59,16 +59,53 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
     super.dispose();
   }
 
-  void _startRequest(DownloadRequest request, {_TransferEntry? restarting}) {
-    _trackTask(request, _manager.enqueue(request), restarting: restarting);
+  void _startOperation(
+    List<DownloadRequest> requests, {
+    DownloadPriority priority = DownloadPriority.normal,
+  }) {
+    final operation = _manager.startOperation(requests, priority: priority);
+    for (var index = 0; index < operation.tasks.length; index++) {
+      _trackTask(
+        requests[index],
+        operation.tasks[index],
+        operationId: operation.id,
+        priority: priority,
+      );
+    }
+  }
+
+  void _startRequest(
+    DownloadRequest request, {
+    DownloadPriority priority = DownloadPriority.normal,
+    _TransferEntry? restarting,
+  }) {
+    final operation = _manager.startOperation(<DownloadRequest>[
+      request,
+    ], priority: priority);
+    _trackTask(
+      request,
+      operation.tasks.single,
+      restarting: restarting,
+      operationId: operation.id,
+      priority: priority,
+    );
   }
 
   void _trackTask(
     DownloadRequest request,
     DownloadTask task, {
     _TransferEntry? restarting,
+    String? operationId,
+    DownloadPriority priority = DownloadPriority.normal,
   }) {
-    final entry = restarting ?? _TransferEntry(request: request, task: task);
+    final entry =
+        restarting ??
+        _TransferEntry(
+          request: request,
+          task: task,
+          operationId: operationId,
+          priority: priority,
+        );
     setState(() {
       if (restarting == null) {
         _entries.insert(0, entry);
@@ -76,6 +113,8 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
         entry.request = request;
         entry.task = task;
         entry.update = null;
+        entry.operationId = operationId;
+        entry.priority = priority;
         entry.resetTelemetry();
       }
     });
@@ -200,7 +239,12 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _AddDownloadSheet(onQueue: _startRequest),
+      builder:
+          (_) => _AddDownloadSheet(
+            onQueue:
+                (request, priority) =>
+                    _startRequest(request, priority: priority),
+          ),
     );
   }
 
@@ -225,7 +269,12 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
           onRestart: _restart,
           onDelete: _deleteArtifacts,
         ),
-        1 => _PresetsView(onStart: _startRequest),
+        1 => _PresetsView(
+          onStart:
+              (request) =>
+                  _startRequest(request, priority: DownloadPriority.foreground),
+          onStartOperation: _startOperation,
+        ),
         _ => _ConfigurationView(
           configuration: _configuration,
           onEdit: _showConfigurationSheet,
@@ -268,7 +317,8 @@ class _DownloadLabPageState extends State<DownloadLabPage> {
 class _AddDownloadSheet extends StatefulWidget {
   const _AddDownloadSheet({required this.onQueue});
 
-  final void Function(DownloadRequest request) onQueue;
+  final void Function(DownloadRequest request, DownloadPriority priority)
+  onQueue;
 
   @override
   State<_AddDownloadSheet> createState() => _AddDownloadSheetState();
@@ -280,6 +330,7 @@ class _AddDownloadSheetState extends State<_AddDownloadSheet> {
   final _checksumController = TextEditingController();
   String? _urlError;
   var _existingFilePolicy = ExistingFilePolicy.resume;
+  var _priority = DownloadPriority.normal;
 
   @override
   void dispose() {
@@ -309,6 +360,7 @@ class _AddDownloadSheetState extends State<_AddDownloadSheet> {
                   : _checksumController.text.trim(),
           existingFilePolicy: _existingFilePolicy,
         ),
+        _priority,
       );
     } on ArgumentError catch (error) {
       setState(() => _urlError = error.message?.toString() ?? error.toString());
@@ -375,6 +427,23 @@ class _AddDownloadSheetState extends State<_AddDownloadSheet> {
                 if (policy != null) {
                   setState(() => _existingFilePolicy = policy);
                 }
+              },
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<DownloadPriority>(
+              segments: const <ButtonSegment<DownloadPriority>>[
+                ButtonSegment(
+                  value: DownloadPriority.normal,
+                  label: Text('normal'),
+                ),
+                ButtonSegment(
+                  value: DownloadPriority.foreground,
+                  label: Text('foreground'),
+                ),
+              ],
+              selected: <DownloadPriority>{_priority},
+              onSelectionChanged: (selection) {
+                setState(() => _priority = selection.single);
               },
             ),
             const SizedBox(height: 12),
@@ -473,6 +542,15 @@ class _TransferTile extends StatelessWidget {
                 ),
                 _StatusLabel(status: state),
               ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              entry.operationId == null
+                  ? 'restored · ${entry.priority.name}'
+                  : '${entry.operationId} · ${entry.priority.name}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
             ),
             const SizedBox(height: 8),
             AdaptiveProgressBar(ranges: ranges),
@@ -575,9 +653,10 @@ class _StatusLabel extends StatelessWidget {
 }
 
 class _PresetsView extends StatelessWidget {
-  const _PresetsView({required this.onStart});
+  const _PresetsView({required this.onStart, required this.onStartOperation});
 
   final void Function(DownloadRequest request) onStart;
+  final void Function(List<DownloadRequest> requests) onStartOperation;
 
   static final List<_Preset> _presets = <_Preset>[
     _Preset(
@@ -599,10 +678,21 @@ class _PresetsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: _presets.length,
+      itemCount: _presets.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        final preset = _presets[index];
+        if (index == 0) {
+          return FilledButton.icon(
+            onPressed:
+                () => onStartOperation(<DownloadRequest>[
+                  for (final preset in _presets)
+                    DownloadRequest(url: preset.url, fileName: preset.fileName),
+                ]),
+            icon: const Icon(Icons.playlist_add),
+            label: const Text('Start scoped batch'),
+          );
+        }
+        final preset = _presets[index - 1];
         return ListTile(
           tileColor: Theme.of(context).colorScheme.surfaceContainerLow,
           title: Text(preset.name),
@@ -855,10 +945,17 @@ class _NumberField extends StatelessWidget {
 }
 
 class _TransferEntry {
-  _TransferEntry({required this.request, required this.task});
+  _TransferEntry({
+    required this.request,
+    required this.task,
+    required this.operationId,
+    required this.priority,
+  });
 
   DownloadRequest request;
   DownloadTask task;
+  String? operationId;
+  DownloadPriority priority;
   DownloadUpdate? update;
   DateTime? _sampleAt;
   int _sampleBytes = 0;

@@ -59,6 +59,58 @@ Use `DownloadStatus` and `DownloadRangeUpdate` from `task.updates` to render
 aggregate and per-part progress. `DownloadTask.result` completes with the final
 file or fails with a typed `DownloadException`.
 
+## Operations And Foreground Priority
+
+Use an operation when several requests belong to one logical caller action and
+their updates should stay scoped to that action:
+
+```dart
+final initial = manager.startOperation(<DownloadRequest>[a, b, c, d]);
+
+initial.updates.listen((update) {
+  print('${initial.id}: ${update.taskId} ${update.status}');
+});
+
+final files = await initial.result;
+```
+
+`DownloadManager.updates` remains the global stream for every manager task.
+`DownloadOperation.updates` contains only the operation's tasks, and
+`DownloadOperation.result` preserves request order. Operations are hot:
+creating one starts work, while listening or re-listening only observes current
+snapshots and future updates.
+
+Request one file as foreground work without replaying an earlier operation:
+
+```dart
+final later = manager.startOperation(
+  <DownloadRequest>[b],
+  priority: DownloadPriority.foreground,
+);
+
+final bTask = later.tasks.single;
+final bFile = (await later.result).single;
+```
+
+If B is pending or active, the manager returns the same physical task and
+promotes its future connection leases ahead of normal pending work. Already
+granted leases are never revoked. If B has completed, the manager creates a
+fresh B-only task and applies the new request's `ExistingFilePolicy`, SHA-256,
+and validator through the normal transfer pipeline.
+
+Priority is execution metadata only. It is not persisted and does not change
+transfer identity, output policy, or validation order.
+
+The first active request owns the shared task's URL, headers, output policy,
+checksum, and validator. A duplicate request does not replace those inputs or
+run a second validator. Continuous foreground work can delay normal pending
+work, so reserve it for explicit user-facing or otherwise latency-sensitive
+requests.
+
+Operations do not duplicate transfer mechanics and are not atomic
+transactions. Pause, resume, cancel, and deletion remain task-level controls
+because one physical task can belong to multiple operations.
+
 Tasks with an `expectedSha256` or `validator` emit
 `DownloadStatus.validating` after all bytes arrive and before completion. The
 logical lifecycle is `preparing`, `downloading`, `validating`, then `completed`;
@@ -204,8 +256,9 @@ V2; do not mix the two APIs in one transfer flow.
 ## Example
 
 The included Flutter example is a developer transfer lab. It exposes session
-limits, range-aware progress, speed, task controls, deletion, checksum input,
-and restart restoration scenarios.
+limits, operation-scoped batches, normal and foreground scheduling,
+range-aware progress, speed, task controls, deletion, checksum input, and
+restart restoration scenarios.
 
 ## Release Status
 

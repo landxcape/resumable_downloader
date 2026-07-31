@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../download_configuration.dart';
+import '../download_priority.dart';
 import '../download_request.dart';
 import '../download_task.dart';
 import '../download_validation.dart';
@@ -64,9 +65,11 @@ class TransferCoordinator {
     String? taskId,
     TransferKey? restoredKey,
     bool allowSourceUriChange = false,
+    DownloadPriority Function()? currentPriority,
   }) {
     final resolvedTaskId = taskId ?? 'task-${++_nextTaskId}';
     final controller = DownloadTaskController(resolvedTaskId);
+    final priority = currentPriority ?? () => DownloadPriority.normal;
     unawaited(
       Future<void>.microtask(
         () => _run(
@@ -74,6 +77,7 @@ class TransferCoordinator {
           request,
           restoredKey: restoredKey,
           allowSourceUriChange: allowSourceUriChange,
+          currentPriority: priority,
         ),
       ),
     );
@@ -85,6 +89,7 @@ class TransferCoordinator {
     DownloadRequest request, {
     TransferKey? restoredKey,
     required bool allowSourceUriChange,
+    required DownloadPriority Function() currentPriority,
   }) async {
     var cancellation = TransferCancellation();
     Completer<void>? resumeSignal;
@@ -99,7 +104,7 @@ class TransferCoordinator {
         resumeRequested = true;
       }
     });
-    _scheduler.enqueue(controller.task.id);
+    _scheduler.enqueue(controller.task.id, priority: currentPriority());
     var isEnqueued = true;
     var retryAttempt = 0;
     try {
@@ -141,7 +146,7 @@ class TransferCoordinator {
               return;
             }
             cancellation = TransferCancellation();
-            _scheduler.enqueue(controller.task.id);
+            _scheduler.enqueue(controller.task.id, priority: currentPriority());
             isEnqueued = true;
             continue;
           }

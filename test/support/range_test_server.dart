@@ -34,6 +34,7 @@ class RangeTestServer {
   var _requestCount = 0;
   var maxConcurrentRequests = 0;
   final List<String> requestedRanges = <String>[];
+  final List<String> requestedPaths = <String>[];
 
   Uri get uri => Uri.parse('http://127.0.0.1:${_server.port}/fixture.bin');
 
@@ -73,15 +74,15 @@ class RangeTestServer {
 
   Future<void> _handle(HttpRequest request) async {
     _requestCount++;
+    requestedPaths.add(request.uri.path);
     final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
     if (rangeHeader != null) {
       requestedRanges.add(rangeHeader);
     }
     _activeRequests++;
-    maxConcurrentRequests =
-        maxConcurrentRequests < _activeRequests
-            ? _activeRequests
-            : maxConcurrentRequests;
+    maxConcurrentRequests = maxConcurrentRequests < _activeRequests
+        ? _activeRequests
+        : maxConcurrentRequests;
     try {
       if (forcedStatusCode != null) {
         request.response.statusCode = forcedStatusCode!;

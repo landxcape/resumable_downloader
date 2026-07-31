@@ -4,10 +4,13 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'download_configuration.dart';
+import 'download_operation.dart';
+import 'download_priority.dart';
 import 'download_request.dart';
 import 'download_task.dart';
 import 'pending_download.dart';
 import 'scheduling/transfer_scheduler.dart';
+import 'status/download_status.dart';
 import 'status/download_update.dart';
 import 'storage/file_transfer_storage.dart';
 import 'transport/dio_transfer_http_client.dart';
@@ -40,8 +43,9 @@ class DownloadManager {
   final StreamController<DownloadUpdate> _updates;
   final DioTransferHttpClient _transport;
   final TransferScheduler _scheduler;
-  final Map<TransferKey, DownloadTask> _activeTasks =
-      <TransferKey, DownloadTask>{};
+  final Map<TransferKey, _ManagedTransfer> _activeTransfers =
+      <TransferKey, _ManagedTransfer>{};
+  var _nextOperationId = 0;
   var _nextTaskId = 0;
   var _disposed = false;
 
@@ -50,29 +54,67 @@ class DownloadManager {
 
   /// Starts a transfer and returns its task handle immediately.
   DownloadTask enqueue(DownloadRequest request) {
+    return _enqueue(request, priority: DownloadPriority.normal);
+  }
+
+  DownloadTask _enqueue(
+    DownloadRequest request, {
+    required DownloadPriority priority,
+  }) {
     if (_disposed) {
       throw StateError('DownloadManager has been disposed');
     }
     final key = TransferKey.fromRequest(request);
-    final activeTask = _activeTasks[key];
-    if (activeTask != null) {
-      return activeTask;
+    final active = _activeTransfers[key];
+    if (active != null && active.isReusable) {
+      if (active.promote(priority)) {
+        _scheduler.promote(active.task.id, active.priority);
+      }
+      return active.task;
+    }
+    if (active != null) {
+      _activeTransfers.remove(key);
     }
     final controller = DownloadTaskController('manager-task-${++_nextTaskId}');
-    final task = controller.task;
-    _activeTasks[key] = task;
+    final managed = _ManagedTransfer(
+      controller: controller,
+      priority: priority,
+    );
+    _activeTransfers[key] = managed;
     unawaited(
-      _start(controller, request).whenComplete(() {
-        if (identical(_activeTasks[key], task)) {
-          _activeTasks.remove(key);
+      _start(managed, request).whenComplete(() {
+        if (identical(_activeTransfers[key], managed)) {
+          _activeTransfers.remove(key);
         }
       }),
     );
-    return task;
+    return managed.task;
   }
 
   /// Starts a transfer and resolves with its final local file.
   Future<File> download(DownloadRequest request) => enqueue(request).result;
+
+  /// Starts a logical operation containing exactly [requests].
+  ///
+  /// Equivalent active requests reuse their existing physical task. A
+  /// foreground operation promotes future scheduling for those shared tasks
+  /// without preempting active connection leases.
+  DownloadOperation startOperation(
+    Iterable<DownloadRequest> requests, {
+    DownloadPriority priority = DownloadPriority.normal,
+  }) {
+    if (_disposed) {
+      throw StateError('DownloadManager has been disposed');
+    }
+    final requestList = List<DownloadRequest>.unmodifiable(requests);
+    final tasks = <DownloadTask>[
+      for (final request in requestList) _enqueue(request, priority: priority),
+    ];
+    return createDownloadOperation(
+      id: 'manager-operation-${++_nextOperationId}',
+      tasks: tasks,
+    );
+  }
 
   /// Lists durable transfers that were not finalized before the app stopped.
   Future<List<PendingDownload>> pendingDownloads() async {
@@ -106,30 +148,36 @@ class DownloadManager {
           'must match the stored transfer restorationId',
         );
       }
-      final activeTask = _activeTasks[artifact.key];
-      if (activeTask != null) {
-        tasks.add(activeTask);
+      final active = _activeTransfers[artifact.key];
+      if (active != null && active.isReusable) {
+        tasks.add(active.task);
         continue;
+      }
+      if (active != null) {
+        _activeTransfers.remove(artifact.key);
       }
       final controller = DownloadTaskController(
         'manager-task-${++_nextTaskId}',
       );
-      final task = controller.task;
-      _activeTasks[artifact.key] = task;
+      final managed = _ManagedTransfer(
+        controller: controller,
+        priority: DownloadPriority.normal,
+      );
+      _activeTransfers[artifact.key] = managed;
       unawaited(
         _start(
-          controller,
+          managed,
           request,
           directory: artifact.directory,
           restoredKey: artifact.key,
           allowSourceUriChange: true,
         ).whenComplete(() {
-          if (identical(_activeTasks[artifact.key], task)) {
-            _activeTasks.remove(artifact.key);
+          if (identical(_activeTransfers[artifact.key], managed)) {
+            _activeTransfers.remove(artifact.key);
           }
         }),
       );
-      tasks.add(task);
+      tasks.add(managed.task);
     }
     return tasks;
   }
@@ -144,7 +192,7 @@ class DownloadManager {
     bool cancelActive = false,
   }) async {
     final key = TransferKey.fromRequest(request);
-    final activeTask = _activeTasks[key];
+    final activeTask = _activeTransfers[key]?.task;
     if (activeTask != null && !activeTask.isCompleted) {
       if (!cancelActive) {
         throw StateError('Cannot delete artifacts for an active transfer');
@@ -157,7 +205,7 @@ class DownloadManager {
       }
     }
     if (activeTask != null) {
-      _activeTasks.remove(key);
+      _activeTransfers.remove(key);
     }
     final directory = await _resolveDirectory(request);
     await FileTransferStorage(directory).deleteArtifacts(
@@ -174,17 +222,18 @@ class DownloadManager {
       return;
     }
     _disposed = true;
-    _activeTasks.clear();
+    _activeTransfers.clear();
     await _updates.close();
   }
 
   Future<void> _start(
-    DownloadTaskController controller,
+    _ManagedTransfer managed,
     DownloadRequest request, {
     Directory? directory,
     TransferKey? restoredKey,
     bool allowSourceUriChange = false,
   }) async {
+    final controller = managed.controller;
     StreamSubscription<DownloadUpdate>? subscription;
     DownloadTask? innerTask;
     var cancelRequested = false;
@@ -215,6 +264,7 @@ class DownloadManager {
         taskId: controller.task.id,
         restoredKey: restoredKey,
         allowSourceUriChange: allowSourceUriChange,
+        currentPriority: () => managed.priority,
       );
       subscription = innerTask.updates.listen((update) {
         controller.emit(update);
@@ -273,5 +323,34 @@ class DownloadManager {
     return segments.isEmpty || segments.last.isEmpty
         ? 'download.bin'
         : segments.last;
+  }
+}
+
+final class _ManagedTransfer {
+  _ManagedTransfer({required this.controller, required this.priority});
+
+  final DownloadTaskController controller;
+  DownloadPriority priority;
+
+  DownloadTask get task => controller.task;
+
+  bool get isReusable {
+    if (task.isCompleted) {
+      return false;
+    }
+    return switch (task.latestUpdate?.status) {
+      DownloadStatus.completed ||
+      DownloadStatus.failed ||
+      DownloadStatus.cancelled => false,
+      _ => true,
+    };
+  }
+
+  bool promote(DownloadPriority requested) {
+    if (priority.index >= requested.index) {
+      return false;
+    }
+    priority = requested;
+    return true;
   }
 }

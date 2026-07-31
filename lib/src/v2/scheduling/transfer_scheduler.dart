@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../download_configuration.dart';
+import '../download_priority.dart';
 import 'connection_lease.dart';
 
 /// Fairly allocates bounded HTTP connection slots to file transfers.
@@ -12,11 +13,23 @@ class TransferScheduler {
   final List<_Waiter> _waiters = <_Waiter>[];
   var _activeConnections = 0;
 
-  void enqueue(String transferId) {
+  void enqueue(
+    String transferId, {
+    DownloadPriority priority = DownloadPriority.normal,
+  }) {
     if (_transfers.containsKey(transferId)) {
       throw ArgumentError.value(transferId, 'transferId', 'already enqueued');
     }
-    _transfers[transferId] = _TransferState();
+    _transfers[transferId] = _TransferState(priority);
+  }
+
+  void promote(String transferId, DownloadPriority priority) {
+    final state = _transfers[transferId];
+    if (state == null || state.priority.index >= priority.index) {
+      return;
+    }
+    state.priority = priority;
+    _drain();
   }
 
   Future<ConnectionLease> acquire(String transferId) {
@@ -73,14 +86,19 @@ class TransferScheduler {
   }
 
   _Waiter? _nextEligibleWaiter() {
-    for (final primary in _waiters.where((waiter) => waiter.isPrimary)) {
-      if (_canGrant(primary)) {
-        return primary;
-      }
-    }
-    for (final waiter in _waiters) {
-      if (_canGrant(waiter)) {
-        return waiter;
+    for (final priority in const <DownloadPriority>[
+      DownloadPriority.foreground,
+      DownloadPriority.normal,
+    ]) {
+      for (final isPrimary in const <bool>[true, false]) {
+        for (final waiter in _waiters) {
+          final state = _transfers[waiter.transferId]!;
+          if (waiter.isPrimary == isPrimary &&
+              state.priority == priority &&
+              _canGrant(waiter)) {
+            return waiter;
+          }
+        }
       }
     }
     return null;
@@ -112,6 +130,9 @@ class TransferScheduler {
 }
 
 class _TransferState {
+  _TransferState(this.priority);
+
+  DownloadPriority priority;
   var activeConnections = 0;
   var hasStarted = false;
 }

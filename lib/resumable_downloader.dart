@@ -1,5 +1,7 @@
 export './src/v2/download_configuration.dart' show DownloadConfiguration;
 export './src/v2/download_manager.dart' show DownloadManager;
+export './src/v2/download_operation.dart' show DownloadOperation;
+export './src/v2/download_priority.dart' show DownloadPriority;
 export './src/v2/pending_download.dart' show PendingDownload;
 export './src/v2/download_request.dart'
     show DownloadRequest, ExistingFilePolicy;

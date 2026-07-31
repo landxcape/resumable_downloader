@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.0-dev.5
+
+### Added
+
+- Add hot operation-scoped task updates and ordered results.
+- Add foreground scheduling with in-place promotion of equivalent active or
+  pending tasks.
+
+### Fixed
+
+- Start a fresh lifecycle when a request arrives during a terminal update or
+  immediately after task result completion.
+- Preserve request-order snapshots when live operation updates arrive during
+  listener attachment.
+
 ## 0.1.0-dev.4
 
 ### Added

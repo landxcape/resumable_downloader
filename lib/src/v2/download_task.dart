@@ -13,12 +13,16 @@ class DownloadTask {
   final String id;
   final Completer<File> _result;
   final StreamController<DownloadUpdate> _updates;
+  DownloadUpdate? _latestUpdate;
   Future<void> Function()? _cancel;
   Future<void> Function()? _pause;
   Future<void> Function()? _resume;
 
   /// Ordered lifecycle and progress snapshots for this task.
   Stream<DownloadUpdate> get updates => _updates.stream;
+
+  /// Most recent lifecycle snapshot, or `null` before the first emission.
+  DownloadUpdate? get latestUpdate => _latestUpdate;
 
   /// Completes with the finalized file or fails with a typed download exception.
   Future<File> get result => _result.future;
@@ -54,12 +58,10 @@ class DownloadTaskController {
     task._resume = handler;
   }
 
-  DownloadUpdate? _lastUpdate;
-
-  DownloadUpdate? get lastUpdate => _lastUpdate;
+  DownloadUpdate? get lastUpdate => task._latestUpdate;
 
   void emit(DownloadUpdate update) {
-    _lastUpdate = update;
+    task._latestUpdate = update;
     if (!task._updates.isClosed) {
       task._updates.add(update);
     }
