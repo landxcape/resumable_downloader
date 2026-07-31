@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### Fixed
+
+- Remove package README links to internal documentation.
+
 ## 0.1.0
 
 The first stable V2 release for reliable foreground Flutter downloads.

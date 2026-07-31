@@ -229,8 +229,7 @@ await manager.restorePending((pending) async {
 ```
 
 If a refreshed response no longer matches the staged entity validators, V2
-discards stale staging and restarts safely. See
-[durable restoration](doc/v2-restoration.md) for details.
+discards stale staging and restarts safely.
 
 Validators are executable application code and are never persisted. Reattach
 them in the restoration resolver, just as you supply fresh URLs and headers.
@@ -262,7 +261,6 @@ restart restoration scenarios.
 
 ## Release Status
 
-V2 is available as the stable `0.1.0` release on pub.dev. The package targets
+V2 is available as the stable `0.1.1` release on pub.dev. The package targets
 reliable foreground Flutter transfers; background adapters remain separate
-future work. Track deferred improvements in
-[doc/v2-publish-checklist.md](doc/v2-publish-checklist.md).
+future work.
