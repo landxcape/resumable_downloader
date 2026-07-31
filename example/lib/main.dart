@@ -515,7 +515,8 @@ class _TransferTile extends StatelessWidget {
                 if (state == DownloadStatus.downloading ||
                     state == DownloadStatus.preparing ||
                     state == DownloadStatus.retrying ||
-                    state == DownloadStatus.paused)
+                    state == DownloadStatus.paused ||
+                    state == DownloadStatus.validating)
                   IconButton(
                     tooltip: 'Cancel transfer',
                     onPressed: () => unawaited(entry.task.cancel()),
@@ -880,6 +881,7 @@ class _TransferEntry {
       }
     }
     if (next.status == DownloadStatus.paused ||
+        next.status == DownloadStatus.validating ||
         next.status == DownloadStatus.completed ||
         next.status == DownloadStatus.failed ||
         next.status == DownloadStatus.cancelled) {

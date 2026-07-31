@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.0-dev.4
+
+### Added
+
+- Emit `DownloadStatus.validating` while configured SHA-256 and custom content
+  checks run for staged or retained outputs.
+
+### Changed
+
+- Preserve completed byte and range progress in validation failures and
+  cancellations.
+- Defer pause and cancellation requested during validation until the callback
+  settles, without finalizing a cancelled task.
+
 ## 0.1.0-dev.3
 
 ### Added

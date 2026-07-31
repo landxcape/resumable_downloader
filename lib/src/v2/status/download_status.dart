@@ -23,4 +23,7 @@ enum DownloadStatus {
 
   /// The caller intentionally stopped the task.
   cancelled,
+
+  /// All bytes are present and configured content checks are running.
+  validating,
 }

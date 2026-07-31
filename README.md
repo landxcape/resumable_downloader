@@ -59,6 +59,17 @@ Use `DownloadStatus` and `DownloadRangeUpdate` from `task.updates` to render
 aggregate and per-part progress. `DownloadTask.result` completes with the final
 file or fails with a typed `DownloadException`.
 
+Tasks with an `expectedSha256` or `validator` emit
+`DownloadStatus.validating` after all bytes arrive and before completion. The
+logical lifecycle is `preparing`, `downloading`, `validating`, then `completed`;
+retained existing outputs can move directly from `preparing` to `validating`.
+The validating update reports full byte progress with no active ranges.
+
+`validating` was appended to `DownloadStatus` in `0.1.0-dev.4` so existing enum
+indices remain unchanged. Exhaustive switches must still add the new value.
+Pause is applied after successful validation and revalidates on resume. Cancel
+also takes effect after the validator returns and prevents finalization.
+
 ## Existing Output And Deletion
 
 `ExistingFilePolicy.resume` is the default. A completed output is reused;
@@ -127,6 +138,16 @@ domain reason: throw `DownloadValidationException` from the callback to retain
 a specific explanation. Other callback errors are wrapped with that error as
 the exception's `cause`.
 
+Validation callbacks are application code, so the package cannot forcibly
+interrupt an arbitrary callback future. The application should apply its own
+timeout when needed. A validation failure takes precedence over a simultaneous
+pause; cancellation prevents the file from being finalized once the callback
+settles.
+
+Active requests with the same durable transfer identity share one task. The
+first request owns its validator and lifecycle; validators are intentionally
+not part of deduplication identity.
+
 ## Authenticated Restoration
 
 V2 stores partial bytes and non-sensitive manifest metadata. It does not store
@@ -188,5 +209,6 @@ and restart restoration scenarios.
 
 ## Release Status
 
-V2 is under active pre-release development and has not been published. Track
-remaining release work in [doc/v2-publish-checklist.md](doc/v2-publish-checklist.md).
+V2 is available as a pub.dev pre-release and remains under active development.
+Track remaining stable-release work in
+[doc/v2-publish-checklist.md](doc/v2-publish-checklist.md).

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -152,6 +153,62 @@ void main() {
     await manager.dispose();
   });
 
+  test(
+    'first deduplicated request owns validation and manager updates',
+    () async {
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'rd-v2-manager-validation-duplicate-',
+      );
+      final server = await RangeTestServer.start(
+        bytes: List<int>.generate(32, (index) => index),
+      );
+      addTearDown(server.close);
+      addTearDown(() => temporaryDirectory.delete(recursive: true));
+
+      final manager = DownloadManager(baseDirectory: temporaryDirectory);
+      final validationStarted = Completer<void>();
+      final finishValidation = Completer<bool>();
+      var firstCalls = 0;
+      var secondCalls = 0;
+      final managerValidation = manager.updates.firstWhere(
+        (update) => update.status == DownloadStatus.validating,
+      );
+      final first = manager.enqueue(
+        DownloadRequest(
+          url: server.uri,
+          fileName: 'same-validation.bin',
+          validator: (_) {
+            firstCalls++;
+            validationStarted.complete();
+            return finishValidation.future;
+          },
+        ),
+      );
+      final second = manager.enqueue(
+        DownloadRequest(
+          url: server.uri,
+          fileName: 'same-validation.bin',
+          validator: (_) {
+            secondCalls++;
+            return true;
+          },
+        ),
+      );
+
+      expect(identical(first, second), isTrue);
+      await validationStarted.future;
+      final validating = await managerValidation;
+      expect(validating.taskId, first.id);
+      expect(validating.progress, 1);
+      finishValidation.complete(true);
+
+      await first.result;
+      expect(firstCalls, 1);
+      expect(secondCalls, 0);
+      await manager.dispose();
+    },
+  );
+
   test('manager deletes completed output and resumable artifacts', () async {
     final temporaryDirectory = await Directory.systemTemp.createTemp(
       'rd-v2-manager-delete-',
@@ -249,14 +306,11 @@ void main() {
       await cancelled;
       await initialManager.dispose();
 
-      final manifestFiles =
-          await Directory(temporaryDirectory.path)
-              .list(recursive: true)
-              .where(
-                (entity) => entity is File && entity.path.endsWith('.json'),
-              )
-              .cast<File>()
-              .toList();
+      final manifestFiles = await Directory(temporaryDirectory.path)
+          .list(recursive: true)
+          .where((entity) => entity is File && entity.path.endsWith('.json'))
+          .cast<File>()
+          .toList();
       final manifest = await manifestFiles.single.readAsString();
       expect(manifest, isNot(contains('initial-secret')));
 

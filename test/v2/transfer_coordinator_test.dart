@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -59,6 +60,10 @@ void main() {
           DownloadStatus.downloading,
           DownloadStatus.completed,
         ]),
+      );
+      expect(
+        (await updates).map((update) => update.status),
+        isNot(contains(DownloadStatus.validating)),
       );
       expect(
         await File('${temporaryDirectory.path}/fixture.bin').exists(),
@@ -124,20 +129,27 @@ void main() {
 
   test('cancelling a task reaches a cancelled terminal state', () async {
     await server.close();
+    fixtureBytes = List<int>.generate(512, (index) => index % 256);
     server = await RangeTestServer.start(
       bytes: fixtureBytes,
-      responseDelay: const Duration(milliseconds: 100),
+      chunkSize: 8,
+      chunkDelay: const Duration(milliseconds: 20),
     );
     final task = coordinator.start(
       DownloadRequest(url: server.uri, fileName: 'cancelled.bin'),
     );
     final updates = task.updates.toList();
 
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await task.updates.firstWhere((update) => update.receivedBytes > 0);
     await task.cancel();
 
     await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
-    expect((await updates).last.status, DownloadStatus.cancelled);
+    final terminal = (await updates).last;
+    expect(terminal.status, DownloadStatus.cancelled);
+    expect(terminal.receivedBytes, greaterThan(0));
+    expect(terminal.totalBytes, fixtureBytes.length);
+    expect(terminal.activeRanges, 0);
+    expect(terminal.ranges, hasLength(1));
   });
 
   test('a later task resumes an incomplete range from its checkpoint', () async {
@@ -330,10 +342,17 @@ void main() {
         expectedSha256: sha256.convert(fixtureBytes).toString(),
       ),
     );
+    final updates = task.updates.toList();
 
     final file = await task.result;
 
     expect(await file.readAsBytes(), fixtureBytes);
+    expect(_statusTransitions(await updates), <DownloadStatus>[
+      DownloadStatus.preparing,
+      DownloadStatus.downloading,
+      DownloadStatus.validating,
+      DownloadStatus.completed,
+    ]);
   });
 
   test('passes complete staged metadata to a custom validator', () async {
@@ -348,6 +367,7 @@ void main() {
         },
       ),
     );
+    final updates = task.updates.toList();
 
     final file = await task.result;
 
@@ -356,6 +376,72 @@ void main() {
     expect(received!.fileName, 'validated.bin');
     expect(received!.totalBytes, fixtureBytes.length);
     expect(await file.readAsBytes(), fixtureBytes);
+    expect(
+      (await updates).where(
+        (update) => update.status == DownloadStatus.validating,
+      ),
+      hasLength(1),
+    );
+  });
+
+  test('SHA-256 and custom validation share one validating phase', () async {
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'double-validated.bin',
+        expectedSha256: sha256.convert(fixtureBytes).toString(),
+        validator: (_) => true,
+      ),
+    );
+    final updates = task.updates.toList();
+
+    await task.result;
+
+    expect(
+      (await updates).where(
+        (update) => update.status == DownloadStatus.validating,
+      ),
+      hasLength(1),
+    );
+  });
+
+  test('validating preserves completed multipart progress', () async {
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        maxConnectionsPerDownload: 4,
+        minimumBytesPerPart: 8,
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'multipart-validated.bin',
+        validator: (_) => true,
+      ),
+    );
+    final updates = task.updates.toList();
+
+    await task.result;
+    final validating = (await updates).singleWhere(
+      (update) => update.status == DownloadStatus.validating,
+    );
+
+    expect(validating.receivedBytes, fixtureBytes.length);
+    expect(validating.totalBytes, fixtureBytes.length);
+    expect(validating.progress, 1);
+    expect(validating.activeRanges, 0);
+    expect(validating.completedRanges, 4);
+    expect(validating.ranges, hasLength(4));
+    expect(
+      validating.ranges.map((range) => range.status),
+      everyElement(DownloadStatus.completed),
+    );
+    expect(validating.outputPath, isNull);
+    expect(validating.error, isNull);
   });
 
   test('rejecting a staged file fails and discards V2 staging', () async {
@@ -368,7 +454,15 @@ void main() {
     final updates = task.updates.toList();
 
     await expectLater(task.result, throwsA(isA<DownloadValidationException>()));
-    expect((await updates).last.error, isA<DownloadValidationException>());
+    final terminal = (await updates).last;
+    expect(terminal.status, DownloadStatus.failed);
+    expect(terminal.receivedBytes, fixtureBytes.length);
+    expect(terminal.totalBytes, fixtureBytes.length);
+    expect(terminal.progress, 1);
+    expect(terminal.activeRanges, 0);
+    expect(terminal.completedRanges, 1);
+    expect(terminal.ranges, hasLength(1));
+    expect(terminal.error, isA<DownloadValidationException>());
     expect(
       await File('${temporaryDirectory.path}/rejected.bin').exists(),
       isFalse,
@@ -445,6 +539,159 @@ void main() {
     expect(wasCalled, isFalse);
   });
 
+  test('cancelling during staged validation prevents finalization', () async {
+    final validationStarted = Completer<void>();
+    final finishValidation = Completer<bool>();
+    final request = DownloadRequest(
+      url: server.uri,
+      fileName: 'cancel-validation.bin',
+      validator: (_) {
+        validationStarted.complete();
+        return finishValidation.future;
+      },
+    );
+    final task = coordinator.start(request);
+    final updates = task.updates.toList();
+
+    await validationStarted.future;
+    await task.cancel();
+    finishValidation.complete(true);
+
+    await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
+    final terminal = (await updates).last;
+    expect(terminal.status, DownloadStatus.cancelled);
+    expect(terminal.receivedBytes, fixtureBytes.length);
+    expect(terminal.totalBytes, fixtureBytes.length);
+    expect(terminal.progress, 1);
+    expect(terminal.ranges, hasLength(1));
+    expect(
+      await File('${temporaryDirectory.path}/cancel-validation.bin').exists(),
+      isFalse,
+    );
+  });
+
+  test('pausing during staged validation revalidates after resume', () async {
+    final validationStarted = Completer<void>();
+    final finishFirstValidation = Completer<bool>();
+    var calls = 0;
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'pause-validation.bin',
+        validator: (_) {
+          calls++;
+          if (calls == 1) {
+            validationStarted.complete();
+            return finishFirstValidation.future;
+          }
+          return true;
+        },
+      ),
+    );
+
+    await validationStarted.future;
+    await task.pause();
+    finishFirstValidation.complete(true);
+    await task.updates.firstWhere(
+      (update) => update.status == DownloadStatus.paused,
+    );
+    await task.resume();
+
+    final output = await task.result;
+    expect(calls, 2);
+    expect(await output.readAsBytes(), fixtureBytes);
+  });
+
+  test('validation rejection wins over a simultaneous pause', () async {
+    final validationStarted = Completer<void>();
+    final finishValidation = Completer<bool>();
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'reject-while-pausing.bin',
+        validator: (_) {
+          validationStarted.complete();
+          return finishValidation.future;
+        },
+      ),
+    );
+    final updates = task.updates.toList();
+
+    await validationStarted.future;
+    await task.pause();
+    finishValidation.complete(false);
+
+    await expectLater(task.result, throwsA(isA<DownloadValidationException>()));
+    expect((await updates).last.status, DownloadStatus.failed);
+  });
+
+  test('cancelling existing-output validation preserves the output', () async {
+    final originalRequest = DownloadRequest(
+      url: server.uri,
+      fileName: 'existing-cancel.bin',
+    );
+    final existing = await coordinator.start(originalRequest).result;
+    final validationStarted = Completer<void>();
+    final finishValidation = Completer<bool>();
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'existing-cancel.bin',
+        validator: (_) {
+          validationStarted.complete();
+          return finishValidation.future;
+        },
+      ),
+    );
+
+    await validationStarted.future;
+    await task.cancel();
+    finishValidation.complete(true);
+
+    await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
+    expect(await existing.exists(), isTrue);
+    expect(await existing.readAsBytes(), fixtureBytes);
+  });
+
+  test('pausing existing-output validation revalidates after resume', () async {
+    final originalRequest = DownloadRequest(
+      url: server.uri,
+      fileName: 'existing-pause.bin',
+    );
+    final existing = await coordinator.start(originalRequest).result;
+    final validationStarted = Completer<void>();
+    final finishFirstValidation = Completer<bool>();
+    var calls = 0;
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'existing-pause.bin',
+        existingFilePolicy: ExistingFilePolicy.keepExisting,
+        validator: (_) {
+          calls++;
+          if (calls == 1) {
+            validationStarted.complete();
+            return finishFirstValidation.future;
+          }
+          return true;
+        },
+      ),
+    );
+
+    await validationStarted.future;
+    await task.pause();
+    finishFirstValidation.complete(true);
+    await task.updates.firstWhere(
+      (update) => update.status == DownloadStatus.paused,
+    );
+    expect(task.isCompleted, isFalse);
+    await task.resume();
+
+    final output = await task.result;
+    expect(output.path, existing.path);
+    expect(calls, 2);
+  });
+
   test(
     'resume replaces a rejected existing output with a fresh download',
     () async {
@@ -452,20 +699,58 @@ void main() {
       await coordinator.start(request).result;
       var calls = 0;
 
-      final output = await coordinator
-          .start(
-            DownloadRequest(
-              url: server.uri,
-              fileName: 'resume.bin',
-              validator: (_) => ++calls > 1,
-            ),
-          )
-          .result;
+      final task = coordinator.start(
+        DownloadRequest(
+          url: server.uri,
+          fileName: 'resume.bin',
+          validator: (_) => ++calls > 1,
+        ),
+      );
+      final updates = task.updates.toList();
+      final output = await task.result;
 
       expect(calls, 2);
       expect(await output.readAsBytes(), fixtureBytes);
+      expect(_statusTransitions(await updates), <DownloadStatus>[
+        DownloadStatus.preparing,
+        DownloadStatus.validating,
+        DownloadStatus.downloading,
+        DownloadStatus.validating,
+        DownloadStatus.completed,
+      ]);
     },
   );
+
+  test('validates an existing output before completing it', () async {
+    final request = DownloadRequest(url: server.uri, fileName: 'existing.bin');
+    await coordinator.start(request).result;
+    final task = coordinator.start(
+      DownloadRequest(
+        url: server.uri,
+        fileName: 'existing.bin',
+        validator: (_) => true,
+      ),
+    );
+    final updates = task.updates.toList();
+
+    await task.result;
+    final snapshots = await updates;
+    final validating = snapshots.singleWhere(
+      (update) => update.status == DownloadStatus.validating,
+    );
+
+    expect(_statusTransitions(snapshots), <DownloadStatus>[
+      DownloadStatus.preparing,
+      DownloadStatus.validating,
+      DownloadStatus.completed,
+    ]);
+    expect(validating.receivedBytes, fixtureBytes.length);
+    expect(validating.totalBytes, fixtureBytes.length);
+    expect(validating.progress, 1);
+    expect(validating.activeRanges, 0);
+    expect(validating.completedRanges, 0);
+    expect(validating.ranges, isEmpty);
+  });
 
   test('keepExisting preserves a rejected existing output', () async {
     final request = DownloadRequest(url: server.uri, fileName: 'keep.bin');
@@ -727,4 +1012,14 @@ void main() {
       hasLength(2),
     );
   });
+}
+
+List<DownloadStatus> _statusTransitions(List<DownloadUpdate> updates) {
+  final transitions = <DownloadStatus>[];
+  for (final update in updates) {
+    if (transitions.isEmpty || transitions.last != update.status) {
+      transitions.add(update.status);
+    }
+  }
+  return transitions;
 }

@@ -114,7 +114,9 @@ class TransferCoordinator {
           );
           return;
         } catch (error, stackTrace) {
-          if (cancellation.isPaused && !cancellation.isCancelled) {
+          if (cancellation.isPaused &&
+              !cancellation.isCancelled &&
+              !_isValidationFailure(error)) {
             final signal = Completer<void>();
             resumeSignal = signal;
             if (resumeRequested) {
@@ -208,25 +210,38 @@ class TransferCoordinator {
     if (existingOutput != null) {
       final bytes = await existingOutput.length();
       try {
-        await _validateFile(
+        await _runConfiguredValidation(
+          controller,
           existingOutput,
           request: request,
           fileName: outputFileName,
           totalBytes: bytes,
         );
       } on DownloadIntegrityException {
+        if (cancellation.isCancelled) {
+          throw const DownloadCancelledException();
+        }
         if (request.existingFilePolicy != ExistingFilePolicy.resume) {
           rethrow;
         }
         await existingOutput.delete();
         existingOutput = null;
       } on DownloadValidationException {
+        if (cancellation.isCancelled) {
+          throw const DownloadCancelledException();
+        }
         if (request.existingFilePolicy != ExistingFilePolicy.resume) {
           rethrow;
         }
         await existingOutput.delete();
         existingOutput = null;
       }
+    }
+    if (cancellation.isCancelled) {
+      throw const DownloadCancelledException();
+    }
+    if (cancellation.isPaused) {
+      throw StateError('Transfer paused during validation');
     }
     if (existingOutput != null) {
       final bytes = await existingOutput.length();
@@ -460,7 +475,8 @@ class TransferCoordinator {
       );
     }
     try {
-      await _validateFile(
+      await _runConfiguredValidation(
+        controller,
         partial,
         request: request,
         fileName: outputFileName,
@@ -529,6 +545,36 @@ class TransferCoordinator {
         cause: error,
       );
     }
+  }
+
+  Future<void> _runConfiguredValidation(
+    DownloadTaskController controller,
+    File file, {
+    required DownloadRequest request,
+    required String fileName,
+    required int totalBytes,
+  }) async {
+    if (request.expectedSha256 == null && request.validator == null) {
+      return;
+    }
+    final latest = controller.lastUpdate;
+    controller.emit(
+      DownloadUpdate(
+        taskId: controller.task.id,
+        status: DownloadStatus.validating,
+        receivedBytes: totalBytes,
+        totalBytes: totalBytes,
+        activeRanges: 0,
+        completedRanges: latest?.completedRanges ?? 0,
+        ranges: latest?.ranges ?? const <DownloadRangeUpdate>[],
+      ),
+    );
+    await _validateFile(
+      file,
+      request: request,
+      fileName: fileName,
+      totalBytes: totalBytes,
+    );
   }
 
   int _receivedBytes(TransferManifest? manifest, ByteRange range) {
@@ -607,16 +653,26 @@ class TransferCoordinator {
     final terminalError = isCancelled
         ? const DownloadCancelledException()
         : error;
+    final latest = controller.lastUpdate;
     controller.emit(
       DownloadUpdate(
         taskId: controller.task.id,
         status: isCancelled ? DownloadStatus.cancelled : DownloadStatus.failed,
-        receivedBytes: 0,
+        receivedBytes: latest?.receivedBytes ?? 0,
+        totalBytes: latest?.totalBytes,
+        activeRanges: 0,
+        completedRanges: latest?.completedRanges ?? 0,
+        retryAttempt: latest?.retryAttempt ?? 0,
         error: terminalError,
+        ranges: latest?.ranges ?? const <DownloadRangeUpdate>[],
       ),
     );
     controller.fail(terminalError, stackTrace);
   }
+
+  bool _isValidationFailure(Object error) =>
+      error is DownloadIntegrityException ||
+      error is DownloadValidationException;
 
   String _fileNameFor(DownloadRequest request) {
     final supplied = request.fileName;
