@@ -18,4 +18,6 @@ export './src/v2/support/download_exception.dart'
         DownloadProtocolException;
 export './src/v2/status/download_status.dart' show DownloadStatus;
 export './src/v2/status/download_range_update.dart' show DownloadRangeUpdate;
+export './src/v2/status/download_operation_metrics.dart'
+    show DownloadOperationMetrics;
 export './src/v2/status/download_update.dart' show DownloadUpdate;

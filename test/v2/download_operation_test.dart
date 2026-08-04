@@ -86,6 +86,158 @@ void main() {
     );
   });
 
+  test('aggregates unique task bytes, totals, and measurable speeds', () {
+    final a = DownloadTaskController('a');
+    final b = DownloadTaskController('b');
+    final operation = createDownloadOperation(
+      id: 'operation',
+      tasks: <DownloadTask>[a.task, b.task],
+    );
+
+    a.emit(
+      DownloadUpdate(
+        taskId: 'a',
+        status: DownloadStatus.downloading,
+        receivedBytes: 100,
+        totalBytes: 1000,
+        bytesPerSecond: 20,
+      ),
+    );
+    b.emit(
+      DownloadUpdate(
+        taskId: 'b',
+        status: DownloadStatus.downloading,
+        receivedBytes: 200,
+        totalBytes: 2000,
+        bytesPerSecond: 30,
+      ),
+    );
+
+    expect(operation.latestMetrics.receivedBytes, 300);
+    expect(operation.latestMetrics.totalBytes, 3000);
+    expect(operation.latestMetrics.bytesPerSecond, 50);
+    expect(
+      operation.latestMetrics.taskUpdates.keys,
+      containsAll(<String>['a', 'b']),
+    );
+
+    a.complete(File('${directory.path}/a.bin'));
+    b.complete(File('${directory.path}/b.bin'));
+  });
+
+  test('unknown totals and inactive tasks do not create stale metrics', () {
+    final a = DownloadTaskController('a');
+    final b = DownloadTaskController('b');
+    final operation = createDownloadOperation(
+      id: 'operation',
+      tasks: <DownloadTask>[a.task, b.task],
+    );
+
+    a.emit(
+      DownloadUpdate(
+        taskId: 'a',
+        status: DownloadStatus.downloading,
+        receivedBytes: 100,
+        totalBytes: 1000,
+        bytesPerSecond: 20,
+      ),
+    );
+    b.emit(
+      DownloadUpdate(
+        taskId: 'b',
+        status: DownloadStatus.downloading,
+        receivedBytes: 200,
+        bytesPerSecond: 30,
+      ),
+    );
+
+    expect(operation.latestMetrics.totalBytes, isNull);
+    expect(operation.latestMetrics.bytesPerSecond, 50);
+
+    b.emit(
+      DownloadUpdate(
+        taskId: 'b',
+        status: DownloadStatus.paused,
+        receivedBytes: 200,
+      ),
+    );
+    expect(operation.latestMetrics.bytesPerSecond, 20);
+
+    a.emit(
+      DownloadUpdate(
+        taskId: 'a',
+        status: DownloadStatus.completed,
+        receivedBytes: 1000,
+        totalBytes: 1000,
+      ),
+    );
+    expect(operation.latestMetrics.bytesPerSecond, isNull);
+
+    a.complete(File('${directory.path}/a.bin'));
+    b.complete(File('${directory.path}/b.bin'));
+  });
+
+  test('counts a shared physical task once in operation metrics', () {
+    final task = DownloadTaskController('shared');
+    final operation = createDownloadOperation(
+      id: 'operation',
+      tasks: <DownloadTask>[task.task, task.task],
+    );
+
+    task.emit(
+      DownloadUpdate(
+        taskId: 'shared',
+        status: DownloadStatus.downloading,
+        receivedBytes: 100,
+        totalBytes: 1000,
+        bytesPerSecond: 20,
+      ),
+    );
+
+    expect(operation.latestMetrics.taskIds, <String>['shared']);
+    expect(operation.latestMetrics.receivedBytes, 100);
+    expect(operation.latestMetrics.totalBytes, 1000);
+    expect(operation.latestMetrics.bytesPerSecond, 20);
+
+    task.complete(File('${directory.path}/shared.bin'));
+  });
+
+  test('metrics replays current state before future snapshots', () async {
+    final task = DownloadTaskController('task');
+    task.emit(
+      DownloadUpdate(
+        taskId: 'task',
+        status: DownloadStatus.preparing,
+        receivedBytes: 0,
+      ),
+    );
+    final operation = createDownloadOperation(
+      id: 'operation',
+      tasks: <DownloadTask>[task.task],
+    );
+    final snapshotsFuture = operation.metrics.toList();
+    await Future<void>.delayed(Duration.zero);
+
+    task.emit(
+      DownloadUpdate(
+        taskId: 'task',
+        status: DownloadStatus.downloading,
+        receivedBytes: 100,
+        totalBytes: 1000,
+        bytesPerSecond: 25,
+      ),
+    );
+    task.complete(File('${directory.path}/task.bin'));
+
+    final snapshots = await snapshotsFuture;
+    expect(snapshots, hasLength(2));
+    expect(
+      snapshots.first.taskUpdates['task']!.status,
+      DownloadStatus.preparing,
+    );
+    expect(snapshots.last.bytesPerSecond, 25);
+  });
+
   test(
     'equivalent inputs share one task but retain result positions',
     () async {
@@ -109,6 +261,11 @@ void main() {
 
     expect(await operation.result, isEmpty);
     expect(await operation.updates.toList(), isEmpty);
+    final metrics = await operation.metrics.toList();
+    expect(metrics, hasLength(1));
+    expect(metrics.single.receivedBytes, 0);
+    expect(metrics.single.totalBytes, 0);
+    expect(metrics.single.bytesPerSecond, isNull);
     expect(operation.isCompleted, isTrue);
   });
 
