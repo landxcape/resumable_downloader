@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add rolling per-task and operation aggregate transfer-speed metrics in bytes
+  per second.
+
 ## 0.1.1
 
 ### Fixed

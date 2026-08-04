@@ -59,6 +59,36 @@ Use `DownloadStatus` and `DownloadRangeUpdate` from `task.updates` to render
 aggregate and per-part progress. `DownloadTask.result` completes with the final
 file or fails with a typed `DownloadException`.
 
+## Transfer Speed Metrics
+
+`DownloadUpdate.bytesPerSecond` reports a nullable rolling receive rate in
+bytes per second for one task. It aggregates all active multipart ranges into
+one file speed; it does not report per-range speeds. The value becomes
+available after enough active-transfer samples exist and is null for queued,
+preparing, paused, retrying, validating, completed, failed, and cancelled
+updates. The rate uses a fixed one-second rolling window and monotonic elapsed
+time to smooth short progress bursts.
+
+For aggregate metrics across an operation, use the additive `metrics` stream:
+
+```dart
+final operation = manager.startOperation(requests);
+
+operation.metrics.listen((metrics) {
+  print(
+    '${metrics.receivedBytes}/${metrics.totalBytes} '
+    '${metrics.bytesPerSecond ?? 0} bytes/s',
+  );
+});
+```
+
+`DownloadOperationMetrics.bytesPerSecond` is the sum of measurable speeds from
+the operation's unique physical tasks. It is null when no task has a
+measurable active-transfer rate. `taskUpdates` contains the latest
+`DownloadUpdate` for each task, so consumers can also read individual file
+speeds. The existing `DownloadTask.updates`, `DownloadManager.updates`, and
+`DownloadOperation.updates` streams are unchanged.
+
 ## Operations And Foreground Priority
 
 Use an operation when several requests belong to one logical caller action and
