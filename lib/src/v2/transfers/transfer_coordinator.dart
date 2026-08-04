@@ -21,6 +21,7 @@ import 'byte_range.dart';
 import 'range_worker.dart';
 import 'transfer_key.dart';
 import 'transfer_plan.dart';
+import 'transfer_speed_tracker.dart';
 
 /// Runs the lifecycle of one V2 file transfer.
 class TransferCoordinator {
@@ -341,21 +342,25 @@ class TransferCoordinator {
           .toList(growable: false),
     );
     await _storage.writeManifest(createManifest());
-    DateTime? lastProgressEmission;
+    final progressClock = Stopwatch()..start();
+    final speedTracker = TransferSpeedTracker();
+    Duration? lastProgressEmission;
 
     void emitProgress({
       bool force = false,
       DownloadStatus taskStatus = DownloadStatus.downloading,
       String? outputPath,
     }) {
-      final now = DateTime.now();
+      final now = progressClock.elapsed;
       if (!force &&
           lastProgressEmission != null &&
-          now.difference(lastProgressEmission!) <
-              const Duration(milliseconds: 100)) {
+          now - lastProgressEmission! < const Duration(milliseconds: 100)) {
         return;
       }
       lastProgressEmission = now;
+      final bytesPerSecond = taskStatus == DownloadStatus.downloading
+          ? speedTracker.record(receivedByRange.values, now)
+          : null;
       final ranges = plan.ranges
           .map(
             (range) => DownloadRangeUpdate(
@@ -382,6 +387,7 @@ class TransferCoordinator {
               .where((status) => status == DownloadStatus.completed)
               .length,
           outputPath: outputPath,
+          bytesPerSecond: bytesPerSecond,
           ranges: ranges,
         ),
       );

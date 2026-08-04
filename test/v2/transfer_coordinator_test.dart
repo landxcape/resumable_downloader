@@ -72,6 +72,64 @@ void main() {
     },
   );
 
+  test('emits aggregate task speed only while downloading', () async {
+    await server.close();
+    fixtureBytes = List<int>.generate(4096, (index) => index % 256);
+    server = await RangeTestServer.start(
+      bytes: fixtureBytes,
+      chunkSize: 8,
+      chunkDelay: const Duration(milliseconds: 20),
+    );
+    final client = DioTransferHttpClient();
+    coordinator = TransferCoordinator(
+      storage: FileTransferStorage(temporaryDirectory),
+      transport: client,
+      probe: TransferProbe(client),
+      configuration: DownloadConfiguration(
+        maxConnectionsPerDownload: 2,
+        minimumBytesPerPart: 1024,
+      ),
+    );
+    final task = coordinator.start(
+      DownloadRequest(url: server.uri, fileName: 'speed.bin'),
+    );
+    final updates = task.updates.toList();
+
+    await task.result;
+    final snapshots = await updates;
+    final downloading = snapshots.where(
+      (update) => update.status == DownloadStatus.downloading,
+    );
+
+    expect(
+      snapshots.map((update) => update.status),
+      contains(DownloadStatus.downloading),
+    );
+    expect(
+      downloading.where((update) => update.bytesPerSecond != null),
+      isNotEmpty,
+    );
+    expect(
+      downloading,
+      everyElement(
+        predicate(
+          (DownloadUpdate update) =>
+              update.bytesPerSecond == null ||
+              update.bytesPerSecond! >= 0,
+        ),
+      ),
+    );
+    expect(downloading.any((update) => update.ranges.length > 1), isTrue);
+    expect(
+      snapshots.where((update) => update.status != DownloadStatus.downloading),
+      everyElement(
+        predicate((DownloadUpdate update) => update.bytesPerSecond == null),
+      ),
+    );
+    expect(snapshots.last.status, DownloadStatus.completed);
+    expect(snapshots.last.bytesPerSecond, isNull);
+  });
+
   test('resuming a request returns an existing completed output', () async {
     final request = DownloadRequest(url: server.uri, fileName: 'existing.bin');
 
@@ -146,6 +204,7 @@ void main() {
     await expectLater(task.result, throwsA(isA<DownloadCancelledException>()));
     final terminal = (await updates).last;
     expect(terminal.status, DownloadStatus.cancelled);
+    expect(terminal.bytesPerSecond, isNull);
     expect(terminal.receivedBytes, greaterThan(0));
     expect(terminal.totalBytes, fixtureBytes.length);
     expect(terminal.activeRanges, 0);
@@ -234,9 +293,10 @@ void main() {
 
     await task.updates.firstWhere((update) => update.receivedBytes >= 8);
     await task.pause();
-    await task.updates.firstWhere(
+    final paused = await task.updates.firstWhere(
       (update) => update.status == DownloadStatus.paused,
     );
+    expect(paused.bytesPerSecond, isNull);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(completed, isFalse);
 
@@ -306,6 +366,7 @@ void main() {
     final updates = task.updates.toList();
 
     await expectLater(task.result, throwsA(isA<DownloadHttpException>()));
+    expect((await updates).last.bytesPerSecond, isNull);
     expect(
       (await updates).map((update) => update.status),
       isNot(contains(DownloadStatus.retrying)),
