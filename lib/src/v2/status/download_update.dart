@@ -14,13 +14,15 @@ class DownloadUpdate {
     this.retryAttempt = 0,
     this.outputPath,
     this.error,
+    this.bytesPerSecond,
     List<DownloadRangeUpdate> ranges = const <DownloadRangeUpdate>[],
   }) : ranges = List.unmodifiable(ranges),
        assert(receivedBytes >= 0),
        assert(totalBytes == null || totalBytes >= 0),
        assert(activeRanges >= 0),
        assert(completedRanges >= 0),
-       assert(retryAttempt >= 0);
+       assert(retryAttempt >= 0),
+       assert(bytesPerSecond == null || bytesPerSecond >= 0);
 
   /// Identifier of the task that emitted this update.
   final String taskId;
@@ -48,6 +50,12 @@ class DownloadUpdate {
 
   /// Terminal or retry error associated with this update, when any.
   final Object? error;
+
+  /// Rolling aggregate receive rate for this task, in bytes per second.
+  ///
+  /// This is null until active-transfer samples establish a rate and for every
+  /// non-downloading lifecycle state.
+  final double? bytesPerSecond;
 
   /// Per-range snapshots for multipart transfers.
   final List<DownloadRangeUpdate> ranges;

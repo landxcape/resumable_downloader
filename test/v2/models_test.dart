@@ -46,6 +46,39 @@ void main() {
 
       expect(update.progress, 0.25);
     });
+
+    test('keeps bytesPerSecond nullable for existing callers', () {
+      final update = DownloadUpdate(
+        taskId: 'task',
+        status: DownloadStatus.downloading,
+        receivedBytes: 12,
+      );
+
+      expect(update.bytesPerSecond, isNull);
+    });
+
+    test('accepts a non-negative task speed', () {
+      final update = DownloadUpdate(
+        taskId: 'task',
+        status: DownloadStatus.downloading,
+        receivedBytes: 12,
+        bytesPerSecond: 2048.5,
+      );
+
+      expect(update.bytesPerSecond, 2048.5);
+    });
+
+    test('rejects negative task speed', () {
+      expect(
+        () => DownloadUpdate(
+          taskId: 'task',
+          status: DownloadStatus.downloading,
+          receivedBytes: 12,
+          bytesPerSecond: -1,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
   });
 
   test('request defaults to resuming an existing partial file', () {
