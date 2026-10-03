@@ -1,3 +1,18 @@
+# Build and cache
 build/
-docs/superpowers/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Documentation and project notes
+docs/
+
+# IDE and OS files
+.vscode/
+.idea/
 *.iml
+.DS_Store
+
+# Example build
+example/build/
+example/.dart_tool/

@@ -1,8 +1,9 @@
 name: resumable_downloader
 description: Reliable Flutter downloads with multipart ranges, durable resume, scheduling, integrity checks, and authenticated restoration.
-version: 0.1.2
+version: 0.1.3
 homepage: https://github.com/landxcape/resumable_downloader
 repository: https://github.com/landxcape/resumable_downloader
+issue_tracker: https://github.com/landxcape/resumable_downloader/issues
 topics:
   - downloader
   - resumable-download

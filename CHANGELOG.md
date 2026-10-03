@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+### Added
+
+- Added `issue_tracker` repository URL in pubspec metadata.
+
 ## 0.1.2
 
 ### Added
