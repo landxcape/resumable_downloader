@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Docs: Added package badges, interactive sandbox demo link, and streamlined installation guide.
+
 ## 0.1.3
 
 ### Added
