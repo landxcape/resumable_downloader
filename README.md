@@ -1,10 +1,23 @@
 # resumable_downloader
 
-A Flutter-first download manager for reliable foreground file transfers. V2
-supports bounded concurrent files, multipart HTTP range downloads, durable
-resume, pause/resume, integrity checks, and authenticated restoration.
+A Flutter download manager for reliable foreground file transfers with bounded concurrency, multipart HTTP range downloads, durable SQLite resume, and integrity checks.
 
-## V2
+[![pub package](https://img.shields.io/pub/v/resumable_downloader.svg)](https://pub.dev/packages/resumable_downloader)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-flutter%20%7C%20android%20%7C%20ios%20%7C%20macos%20%7C%20windows%20%7C%20linux-blue)](https://pub.dev/packages/resumable_downloader)
+[![Interactive Sandbox](https://img.shields.io/badge/demo-interactive%20sandbox-0284C7.svg)](https://shakyapurna.com.np/#/lab/resumable_downloader/sandbox)
+
+An [interactive sandbox](https://shakyapurna.com.np/#/lab/resumable_downloader/sandbox) is available to test chunked range downloads, pause/resume simulation, and network interruption scenarios in real-time.
+
+## Installation
+
+Add the package to your project:
+
+```bash
+flutter pub add resumable_downloader
+```
+
+## Quick Start
 
 The default library exports V2:
 
@@ -289,8 +302,6 @@ limits, operation-scoped batches, normal and foreground scheduling,
 range-aware progress, speed, task controls, deletion, checksum input, and
 restart restoration scenarios.
 
-## Release Status
+## Scope
 
-V2 is available as the stable `0.1.1` release on pub.dev. The package targets
-reliable foreground Flutter transfers; background adapters remain separate
-future work.
+The package targets reliable foreground Flutter transfers; background adapters remain separate future work.
